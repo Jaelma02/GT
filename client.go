@@ -204,6 +204,8 @@ func readFirstFile(dirPath string) ([]byte, error) {
 	return os.ReadFile(path.Join(dirPath, fileNames[0]))
 }
 
+//const methods = ["InitLedger","CreateCar","QueryAllCars","QueryCar","ChangeCarOwner",'UpdateAsset'];
+
 func initLedger(contract *client.Contract) {
 	fmt.Printf("\n--> Submit Transaction: InitLedger, function creates the initial set of assets on the ledger \n")
 
@@ -218,7 +220,7 @@ func initLedger(contract *client.Contract) {
 func getAllAssets(contract *client.Contract) {
 	fmt.Println("\n--> Evaluate Transaction: GetAllAssets, function returns all the current assets on the ledger")
 
-	evaluateResult, err := contract.EvaluateTransaction("GetAllAssets")
+	evaluateResult, err := contract.EvaluateTransaction("QueryAllCars")
 	if err != nil {
 		panic(fmt.Errorf("failed to evaluate transaction: %w", err))
 	}
@@ -231,7 +233,7 @@ func createAsset(contract *client.Contract, num int) {
 	fmt.Printf("\n--> Submit Transaction: CreateAsset, creates new asset with ID, Color, Size, Owner and AppraisedValue arguments \n")
 
 	assetId := fmt.Sprintf("asset%d", num)
-	_, err := contract.SubmitTransaction("CreateAsset", assetId, "yellow", "5", "Tom", "1300")
+	_, err := contract.SubmitTransaction("CreateCar", assetId, "yellow", "5", "Tom", "1300")
 	if err != nil {
 		panic(fmt.Errorf("failed to submit transaction: %w", err))
 	}
@@ -242,7 +244,7 @@ func createAsset(contract *client.Contract, num int) {
 func readAssetByID(contract *client.Contract, key string) {
 	fmt.Printf("\n--> Evaluate Transaction: ReadAsset, function returns asset attributes\n")
 
-	evaluateResult, err := contract.EvaluateTransaction("ReadAsset", key)
+	evaluateResult, err := contract.EvaluateTransaction("QueryCar", key)
 	if err != nil {
 		panic(fmt.Errorf("failed to evaluate transaction: %w", err))
 	}
@@ -254,7 +256,7 @@ func readAssetByID(contract *client.Contract, key string) {
 func transferAssetAsync(contract *client.Contract, id string, newOwner string) {
 	fmt.Printf("\n--> Async Submit Transaction: TransferAsset, updates existing asset owner")
 
-	submitResult, commit, err := contract.SubmitAsync("TransferAsset", client.WithArguments(id, newOwner))
+	submitResult, commit, err := contract.SubmitAsync("ChangeCarOwne", client.WithArguments(id, newOwner))
 	if err != nil {
 		panic(fmt.Errorf("failed to submit transaction asynchronously: %w", err))
 	}
