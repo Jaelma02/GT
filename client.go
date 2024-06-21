@@ -1,9 +1,3 @@
-/*
-Copyright 2021 IBM All Rights Reserved.
-
-SPDX-License-Identifier: Apache-2.0
-*/
-
 package main
 
 import (
@@ -13,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"embed"
 	"fmt"
 	"os"
 	"path"
@@ -33,7 +26,7 @@ const (
 	certPath     = cryptoPath + "/users/User1@org1.example.com/msp/signcerts"
 	keyPath      = cryptoPath + "/users/User1@org1.example.com/msp/keystore"
 	tlsCertPath  = cryptoPath + "/peers/peer0.org1.example.com/tls/ca.crt"
-	peerEndpoint = "dns:///localhost:7051"
+	peerEndpoint = "localhost:7051"
 	gatewayPeer  = "peer0.org1.example.com"
 )
 
@@ -42,24 +35,23 @@ var assetId = fmt.Sprintf("asset%d", now.Unix()*1e3+int64(now.Nanosecond())/1e6)
 
 func main() {
 	// Parse command-line arguments
-	action := flag.String("action", "", "Action to perform: initLedger, transferAsset, createAsset, createAssetEndorse, getAll, getByKey, updateAsset")
+	action := flag.String("action", "", "Action to perform: initLedger, transferAsset, createAsset, getAll, getByKey, updateAsset")
 	id := flag.String("id", "", "Asset ID")
 	newOwner := flag.String("newOwner", "", "New owner for the asset")
 	num := flag.Int("num", 0, "Number for createAsset")
 	key := flag.String("key", "", "Key for getByKey or updateAsset")
-	benchmark := flag.String("benchmark", "", "Benchmark type for createAssetEndorse")
 	flag.Parse()
 
 	// The gRPC client connection should be shared by all Gateway connections to this endpoint
 	clientConnection := newGrpcConnection()
 	defer clientConnection.Close()
 
-	id := newIdentity()
+	// Create a Gateway connection for a specific client identity
+	idObj := newIdentity()
 	sign := newSign()
 
-	// Create a Gateway connection for a specific client identity
 	gw, err := client.Connect(
-		id,
+		idObj,
 		client.WithSign(sign),
 		client.WithClientConnection(clientConnection),
 		// Default timeouts for different gRPC calls
@@ -100,12 +92,12 @@ func main() {
 	case "createAsset":
 		createAsset(contract, *num)
 		/*
-	case "createAssetEndorse":
-		if *benchmark == "B" {
-			createAssetEndorseBenchmarks(contract, *num)
-		} else {
-			createAssetEndorse(contract, *num)
-		}
+			case "createAssetEndorse":
+				if *benchmark == "B" {
+					createAssetEndorseBenchmarks(contract, *num)
+				} else {
+					createAssetEndorse(contract, *num)
+				}
 		*/
 	case "getAll":
 		getAllAssets(contract)
@@ -205,8 +197,7 @@ func readFirstFile(dirPath string) ([]byte, error) {
 	return os.ReadFile(path.Join(dirPath, fileNames[0]))
 }
 
-//const methods = ["InitLedger","CreateCar","QueryAllCars","QueryCar","ChangeCarOwner",'UpdateAsset'];
-
+// initLedger initializes a set of assets on the ledger.
 func initLedger(contract *client.Contract) {
 	fmt.Printf("\n--> Submit Transaction: InitLedger, function creates the initial set of assets on the ledger \n")
 
@@ -218,6 +209,7 @@ func initLedger(contract *client.Contract) {
 	fmt.Printf("*** Transaction committed successfully\n")
 }
 
+// getAllAssets returns all current assets on the ledger.
 func getAllAssets(contract *client.Contract) {
 	fmt.Println("\n--> Evaluate Transaction: GetAllAssets, function returns all the current assets on the ledger")
 
