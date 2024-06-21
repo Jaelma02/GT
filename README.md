@@ -80,7 +80,7 @@ updateAsset: Atualiza um ativo que não existe.
 
 Para inicializar o ledger:
 
-        ./fabric-client -action=initLedger
+    ./fabric-client -action=initLedger
 
 Para criar um novo ativo:
 
