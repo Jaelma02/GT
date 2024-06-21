@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"embed"
 	"fmt"
 	"os"
 	"path"
