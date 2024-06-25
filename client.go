@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/hyperledger/fabric-gateway/pkg/client"
@@ -87,7 +88,16 @@ func main() {
 	case "getAllAssets":
 		getAllAssets(contract)
 	case "createAsset":
-		createAsset(contract)
+		n := 1 // Valor padrão para criar um asset
+		if len(os.Args) >= 3 {
+			numAssets, err := strconv.Atoi(os.Args[2])
+			if err == nil {
+				n = numAssets
+			} else {
+				fmt.Println("Erro ao converter número de assets, usando o valor padrão de 1.")
+			}
+		}
+		createAssets(contract, n)
 	case "readAssetByID":
 		if len(os.Args) < 3 {
 			fmt.Println("Uso: go run main.go readAssetByID <assetId>")
@@ -242,24 +252,31 @@ func getAllAssets(contract *client.Contract) {
 	fmt.Printf("*** Result:%s\n", result)
 }
 
-// Submit a transaction synchronously, blocking until it has been committed to the ledger.
-func createAsset(contract *client.Contract) {
-	fmt.Println("\n--> Submit Transaction: CreateAsset, creates new asset with ID, Color, Size, Owner and AppraisedValue arguments")
-
-	hash := generateRandomHash()
-
-	startTime := time.Now()
-
-	_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
-	if err != nil {
-		panic(fmt.Errorf("failed to submit transaction: %w", err))
+// Submit transactions synchronously, blocking until each has been committed to the ledger.
+func createAssets(contract *client.Contract, n int) {
+	if n <= 0 {
+		n = 1 // Set n to 1 if it's zero or negative
 	}
 
-	endTime := time.Now()
-	elapsedTime := endTime.Sub(startTime)
+	fmt.Printf("\n--> Submit Transactions: CreateAsset, creates %d new assets with ID, Color, Size, Owner, and AppraisedValue arguments\n", n)
 
-	fmt.Printf("*** Transaction %s committed successfully\n", hash)
-	fmt.Printf("Time taken: %v\n", elapsedTime)
+	for i := 0; i < n; i++ {
+		// Assuming generateRandomHash() is defined elsewhere to generate a random hash
+		hash := generateRandomHash()
+
+		startTime := time.Now()
+
+		_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
+		if err != nil {
+			panic(fmt.Errorf("failed to submit transaction: %w", err))
+		}
+
+		endTime := time.Now()
+		elapsedTime := endTime.Sub(startTime)
+
+		fmt.Printf("*** Transaction %s committed successfully\n", hash)
+		fmt.Printf("Time taken: %v\n", elapsedTime)
+	}
 }
 
 // Evaluate a transaction by assetID to query ledger state.
