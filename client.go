@@ -135,9 +135,7 @@ func main() {
 				fmt.Println("Error converting number of assets, using default value of 100.")
 			}
 		}
-
 		createAssetBench(contract, tps, numAssets)
-
 		// Verifica se foi fornecido o número de assets como argumento
 		if len(os.Args) >= 4 {
 			numAssetsVal, err := strconv.Atoi(os.Args[3])
@@ -333,17 +331,16 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	wg.Add(numAssets)
 
 	for i := 0; i < numAssets; i++ {
-		time.Sleep(interval) // Sleep for the calculated interval
-
-		go func() {
+		go func(i int) {
 			defer wg.Done()
+			time.Sleep(interval * time.Duration(i)) // Sleep for the calculated interval
 
 			hash := generateRandomHash()
 			_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
 			if err != nil {
 				fmt.Printf("failed to submit transaction: %v\n", err)
 			}
-		}()
+		}(i)
 	}
 
 	wg.Wait()
