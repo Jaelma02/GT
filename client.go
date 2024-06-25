@@ -9,6 +9,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -168,6 +170,26 @@ var methods = []string{
 	"QueryAllCars",
 	"QueryCar",
 	"ChangeCarOwner",
+}
+
+func generateRandomHash() string {
+	// Gerar uma string aleatória de 8 bytes
+	randomBytes := make([]byte, 8)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		panic(fmt.Errorf("erro ao gerar bytes aleatórios: %v", err))
+	}
+	randomString := fmt.Sprintf("%x", randomBytes)
+
+	// Calcular o hash SHA-256 da string aleatória
+	hash := sha256.New()
+	hash.Write([]byte(randomString))
+	hashInBytes := hash.Sum(nil)
+
+	// Converter o hash em uma string hexadecimal
+	hashString := fmt.Sprintf("%x", hashInBytes)
+
+	return hashString
 }
 
 // This type of transaction would typically only be run once by an application the first time it was started after its
