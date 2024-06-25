@@ -79,8 +79,8 @@ func main() {
 	contract := network.GetContract(chaincodeName)
 
 	//initLedger(contract)
-	getAllAssets(contract)
-	//createAsset(contract)
+	//getAllAssets(contract)
+	createAsset(contract)
 	//readAssetByID(contract)
 	//transferAssetAsync(contract)
 	//exampleErrorHandling(contract)
