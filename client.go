@@ -244,14 +244,22 @@ func getAllAssets(contract *client.Contract) {
 
 // Submit a transaction synchronously, blocking until it has been committed to the ledger.
 func createAsset(contract *client.Contract) {
-	fmt.Printf("\n--> Submit Transaction: CreateAsset, creates new asset with ID, Color, Size, Owner and AppraisedValue arguments \n")
+	fmt.Println("\n--> Submit Transaction: CreateAsset, creates new asset with ID, Color, Size, Owner and AppraisedValue arguments")
+
 	hash := generateRandomHash()
+
+	startTime := time.Now()
+
 	_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
 	if err != nil {
 		panic(fmt.Errorf("failed to submit transaction: %w", err))
 	}
 
-	fmt.Printf("*** Transaction committed successfully\n")
+	endTime := time.Now()
+	elapsedTime := endTime.Sub(startTime)
+
+	fmt.Printf("*** Transaction %s committed successfully\n", hash)
+	fmt.Printf("Time taken: %v\n", elapsedTime)
 }
 
 // Evaluate a transaction by assetID to query ledger state.
