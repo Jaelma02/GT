@@ -114,7 +114,10 @@ func main() {
 		newOwner := os.Args[3]
 		transferAssetAsync(contract, assetId, newOwner)
 	case "createAssetBench":
-		tps := 10 // Valor padrão para TPS
+		tps := 10        // Valor padrão para TPS
+		numAssets := 100 // Número padrão de assets a serem criados
+
+		// Verifica se foi fornecido o número de TPS como argumento
 		if len(os.Args) >= 3 {
 			tpsVal, err := strconv.Atoi(os.Args[2])
 			if err == nil {
@@ -123,7 +126,18 @@ func main() {
 				fmt.Println("Erro ao converter TPS, usando o valor padrão de 10.")
 			}
 		}
-		createAssetBench(contract, tps)
+
+		// Verifica se foi fornecido o número de assets como argumento
+		if len(os.Args) >= 4 {
+			numAssetsVal, err := strconv.Atoi(os.Args[3])
+			if err == nil {
+				numAssets = numAssetsVal
+			} else {
+				fmt.Println("Erro ao converter número de assets, usando o valor padrão de 100.")
+			}
+		}
+
+		createAssetBench(contract, tps, numAssets)
 	case "exampleErrorHandling":
 		exampleErrorHandling(contract)
 	default:
@@ -290,11 +304,14 @@ func createAssets(contract *client.Contract, n int) {
 	}
 }
 
-func createAssetBench(contract *client.Contract, tps int) {
+func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	fmt.Printf("\n--> Benchmarking CreateAsset, TPS: %d\n", tps)
 
-	// Canal para controlar a taxa de transações por segundo
+	// Canal para controlar o TPS
 	tpsCh := make(chan struct{}, tps)
+
+	// Canal para controlar o término da criação de assets
+	doneCh := make(chan struct{})
 
 	// Contador para transações concluídas
 	var completedTransactions int
@@ -316,12 +333,15 @@ func createAssetBench(contract *client.Contract, tps int) {
 			return
 		}
 
-		// Incrementa o contador de transações concluídas
+		// Incrementa o contador de transações concluídas de forma segura
 		completedTransactions++
+		if completedTransactions >= numAssets {
+			doneCh <- struct{}{}
+		}
 	}
 
 	// Loop para criar assets até atingir o número desejado
-	for i := 1; i <= 100; i++ { // Exemplo: criar 100 assets
+	for i := 1; i <= numAssets; i++ {
 		assetId := generateRandomHash()
 		tpsCh <- struct{}{} // Envia um sinal para o canal, controlando o TPS
 
@@ -333,9 +353,7 @@ func createAssetBench(contract *client.Contract, tps int) {
 	}
 
 	// Espera até que todas as transações sejam concluídas
-	for len(tpsCh) > 0 {
-		time.Sleep(100 * time.Millisecond)
-	}
+	<-doneCh
 
 	// Tempo decorrido desde o início
 	elapsedTime := time.Since(startTime)
