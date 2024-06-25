@@ -114,7 +114,10 @@ func main() {
 		newOwner := os.Args[3]
 		transferAssetAsync(contract, assetId, newOwner)
 	case "createAssetBench":
-		tps := 10 // Valor padrão para TPS
+		tps := 10        // Valor padrão para TPS
+		numAssets := 100 // Número padrão de assets a serem criados
+
+		// Verifica se foi fornecido o número de TPS como argumento
 		if len(os.Args) >= 3 {
 			tpsVal, err := strconv.Atoi(os.Args[2])
 			if err == nil {
@@ -123,7 +126,18 @@ func main() {
 				fmt.Println("Erro ao converter TPS, usando o valor padrão de 10.")
 			}
 		}
-		createAssetBench(contract, tps)
+
+		// Verifica se foi fornecido o número de assets como argumento
+		if len(os.Args) >= 4 {
+			numAssetsVal, err := strconv.Atoi(os.Args[3])
+			if err == nil {
+				numAssets = numAssetsVal
+			} else {
+				fmt.Println("Erro ao converter número de assets, usando o valor padrão de 100.")
+			}
+		}
+
+		createAssetBench(contract, tps, numAssets)
 	case "exampleErrorHandling":
 		exampleErrorHandling(contract)
 	default:
@@ -291,7 +305,7 @@ func createAssets(contract *client.Contract, n int) {
 }
 
 // Create assets at a specified rate (TPS - Transactions Per Second)
-func createAssetBench(contract *client.Contract, tps int) {
+func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	if tps <= 0 {
 		fmt.Println("Invalid TPS value. Please provide a positive integer.")
 		return
@@ -308,18 +322,19 @@ func createAssetBench(contract *client.Contract, tps int) {
 	startTime := time.Now()
 
 	for range ticker.C {
+		if count >= numAssets {
+			break
+		}
+
 		hash := generateRandomHash()
 
 		_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
 		if err != nil {
-			panic(fmt.Errorf("failed to submit transaction: %w", err))
+			fmt.Printf("*** Failed to submit transaction for asset %s: %v\n", hash, err)
+			continue
 		}
 
 		count++
-
-		if count >= tps {
-			break
-		}
 	}
 
 	endTime := time.Now()
