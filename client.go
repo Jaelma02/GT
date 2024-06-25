@@ -113,6 +113,17 @@ func main() {
 		assetId := os.Args[2]
 		newOwner := os.Args[3]
 		transferAssetAsync(contract, assetId, newOwner)
+	case "createAssetBench":
+		tps := 10 // Valor padrão para TPS
+		if len(os.Args) >= 3 {
+			tpsVal, err := strconv.Atoi(os.Args[2])
+			if err == nil {
+				tps = tpsVal
+			} else {
+				fmt.Println("Erro ao converter TPS, usando o valor padrão de 10.")
+			}
+		}
+		createAssetBench(contract, tps)
 	case "exampleErrorHandling":
 		exampleErrorHandling(contract)
 	default:
@@ -277,6 +288,48 @@ func createAssets(contract *client.Contract, n int) {
 		fmt.Printf("*** Transaction %s committed successfully\n", hash)
 		fmt.Printf("Time taken: %v\n", elapsedTime)
 	}
+}
+
+// Create assets at a specified rate (TPS - Transactions Per Second)
+func createAssetBench(contract *client.Contract, tps int) {
+	if tps <= 0 {
+		fmt.Println("Invalid TPS value. Please provide a positive integer.")
+		return
+	}
+
+	fmt.Printf("\n--> Benchmarking CreateAsset at %d TPS\n", tps)
+
+	interval := time.Second / time.Duration(tps) // Calculating interval between transactions
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	count := 0
+	startTime := time.Now()
+
+	for range ticker.C {
+		hash := generateRandomHash()
+
+		_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
+		if err != nil {
+			panic(fmt.Errorf("failed to submit transaction: %w", err))
+		}
+
+		count++
+
+		if count >= tps {
+			break
+		}
+	}
+
+	endTime := time.Now()
+	elapsedTime := endTime.Sub(startTime)
+	transactionsPerSecond := float64(count) / elapsedTime.Seconds()
+
+	fmt.Printf("\n*** Benchmarking Complete ***\n")
+	fmt.Printf("Transactions executed: %d\n", count)
+	fmt.Printf("Elapsed time: %v\n", elapsedTime)
+	fmt.Printf("TPS achieved: %.2f\n", transactionsPerSecond)
 }
 
 // Evaluate a transaction by assetID to query ledger state.
