@@ -63,7 +63,7 @@ func main() {
 	defer gw.Close()
 
 	// Override default values for chaincode and channel name as they may differ in testing contexts.
-	chaincodeName := "basic"
+	chaincodeName := "fabcar"
 	if ccname := os.Getenv("CHAINCODE_NAME"); ccname != "" {
 		chaincodeName = ccname
 	}
@@ -162,12 +162,20 @@ func readFirstFile(dirPath string) ([]byte, error) {
 	return os.ReadFile(path.Join(dirPath, fileNames[0]))
 }
 
+var methods = []string{
+	"InitLedger",
+	"CreateCar",
+	"QueryAllCars",
+	"QueryCar",
+	"ChangeCarOwner",
+}
+
 // This type of transaction would typically only be run once by an application the first time it was started after its
 // initial deployment. A new version of the chaincode deployed later would likely not need to run an "init" function.
 func initLedger(contract *client.Contract) {
 	fmt.Printf("\n--> Submit Transaction: InitLedger, function creates the initial set of assets on the ledger \n")
 
-	_, err := contract.SubmitTransaction("InitLedger")
+	_, err := contract.SubmitTransaction(methods[0])
 	if err != nil {
 		panic(fmt.Errorf("failed to submit transaction: %w", err))
 	}
@@ -179,7 +187,7 @@ func initLedger(contract *client.Contract) {
 func getAllAssets(contract *client.Contract) {
 	fmt.Println("\n--> Evaluate Transaction: GetAllAssets, function returns all the current assets on the ledger")
 
-	evaluateResult, err := contract.EvaluateTransaction("GetAllAssets")
+	evaluateResult, err := contract.EvaluateTransaction(methods[2])
 	if err != nil {
 		panic(fmt.Errorf("failed to evaluate transaction: %w", err))
 	}
@@ -192,7 +200,7 @@ func getAllAssets(contract *client.Contract) {
 func createAsset(contract *client.Contract) {
 	fmt.Printf("\n--> Submit Transaction: CreateAsset, creates new asset with ID, Color, Size, Owner and AppraisedValue arguments \n")
 
-	_, err := contract.SubmitTransaction("CreateAsset", assetId, "yellow", "5", "Tom", "1300")
+	_, err := contract.SubmitTransaction(methods[1], assetId, "yellow", "5", "Tom", "1300")
 	if err != nil {
 		panic(fmt.Errorf("failed to submit transaction: %w", err))
 	}
@@ -204,7 +212,7 @@ func createAsset(contract *client.Contract) {
 func readAssetByID(contract *client.Contract) {
 	fmt.Printf("\n--> Evaluate Transaction: ReadAsset, function returns asset attributes\n")
 
-	evaluateResult, err := contract.EvaluateTransaction("ReadAsset", assetId)
+	evaluateResult, err := contract.EvaluateTransaction(methods[3], assetId)
 	if err != nil {
 		panic(fmt.Errorf("failed to evaluate transaction: %w", err))
 	}
@@ -218,7 +226,7 @@ func readAssetByID(contract *client.Contract) {
 func transferAssetAsync(contract *client.Contract) {
 	fmt.Printf("\n--> Async Submit Transaction: TransferAsset, updates existing asset owner")
 
-	submitResult, commit, err := contract.SubmitAsync("TransferAsset", client.WithArguments(assetId, "Mark"))
+	submitResult, commit, err := contract.SubmitAsync(methods[4], client.WithArguments(assetId, "Mark"))
 	if err != nil {
 		panic(fmt.Errorf("failed to submit transaction asynchronously: %w", err))
 	}
