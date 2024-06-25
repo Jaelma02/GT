@@ -290,46 +290,61 @@ func createAssets(contract *client.Contract, n int) {
 	}
 }
 
-// Create assets at a specified rate (TPS - Transactions Per Second)
 func createAssetBench(contract *client.Contract, tps int) {
-	if tps <= 0 {
-		fmt.Println("Invalid TPS value. Please provide a positive integer.")
-		return
-	}
+	fmt.Printf("\n--> Benchmarking CreateAsset, TPS: %d\n", tps)
 
-	fmt.Printf("\n--> Benchmarking CreateAsset at %d TPS\n", tps)
+	// Canal para controlar a taxa de transações por segundo
+	tpsCh := make(chan struct{}, tps)
 
-	interval := time.Second / time.Duration(tps) // Calculating interval between transactions
+	// Contador para transações concluídas
+	var completedTransactions int
 
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	count := 0
+	// Início do tempo para medição
 	startTime := time.Now()
 
-	for range ticker.C {
-		hash := generateRandomHash()
+	// Função para criação assíncrona de assets
+	createAsync := func(assetId string) {
+		defer func() {
+			// Sinaliza que a transação foi concluída
+			<-tpsCh
+		}()
 
-		_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
+		// Submete a transação para criar um asset
+		_, err := contract.SubmitTransaction(methods[1], assetId, "yellow", "5", "Tom", "1300")
 		if err != nil {
-			panic(fmt.Errorf("failed to submit transaction: %w", err))
+			fmt.Printf("*** Failed to submit transaction for asset %s: %v\n", assetId, err)
+			return
 		}
 
-		count++
-
-		if count >= tps {
-			break
-		}
+		// Incrementa o contador de transações concluídas
+		completedTransactions++
 	}
 
-	endTime := time.Now()
-	elapsedTime := endTime.Sub(startTime)
-	transactionsPerSecond := float64(count) / elapsedTime.Seconds()
+	// Loop para criar assets até atingir o número desejado
+	for i := 1; i <= 100; i++ { // Exemplo: criar 100 assets
+		assetId := generateRandomHash()
+		tpsCh <- struct{}{} // Envia um sinal para o canal, controlando o TPS
 
-	fmt.Printf("\n*** Benchmarking Complete ***\n")
-	fmt.Printf("Transactions executed: %d\n", count)
-	fmt.Printf("Elapsed time: %v\n", elapsedTime)
-	fmt.Printf("TPS achieved: %.2f\n", transactionsPerSecond)
+		// Cria o asset assincronamente
+		go createAsync(assetId)
+
+		// Intervalo para controlar o TPS
+		time.Sleep(time.Second / time.Duration(tps))
+	}
+
+	// Espera até que todas as transações sejam concluídas
+	for len(tpsCh) > 0 {
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Tempo decorrido desde o início
+	elapsedTime := time.Since(startTime)
+
+	// Exibição dos resultados do benchmark
+	fmt.Println("\n*** Benchmarking Complete ***")
+	fmt.Printf("Transactions executed: %d\n", completedTransactions)
+	fmt.Printf("Elapsed time: %s\n", elapsedTime)
+	fmt.Printf("TPS achieved: %.2f\n", float64(completedTransactions)/elapsedTime.Seconds())
 }
 
 // Evaluate a transaction by assetID to query ledger state.
