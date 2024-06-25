@@ -38,7 +38,8 @@ const (
 )
 
 var now = time.Now()
-var assetId = fmt.Sprintf("asset%d", now.Unix()*1e3+int64(now.Nanosecond())/1e6)
+
+//var assetId = fmt.Sprintf("asset%d", now.Unix()*1e3+int64(now.Nanosecond())/1e6)
 
 func main() {
 	// The gRPC client connection should be shared by all Gateway connections to this endpoint
@@ -78,12 +79,35 @@ func main() {
 	network := gw.GetNetwork(channelName)
 	contract := network.GetContract(chaincodeName)
 
-	//initLedger(contract)
-	//getAllAssets(contract)
-	createAsset(contract)
-	//readAssetByID(contract)
-	//transferAssetAsync(contract)
-	//exampleErrorHandling(contract)
+	// Switch baseado no argumento passado
+	operacao := os.Args[1]
+	switch operacao {
+	case "initLedger":
+		initLedger(contract)
+	case "getAllAssets":
+		getAllAssets(contract)
+	case "createAsset":
+		createAsset(contract)
+	case "readAssetByID":
+		if len(os.Args) < 3 {
+			fmt.Println("Uso: go run main.go readAssetByID <assetId>")
+			return
+		}
+		assetId := os.Args[2]
+		readAssetByID(contract, assetId)
+	case "transferAsset":
+		if len(os.Args) < 4 {
+			fmt.Println("Uso: go run main.go transferAssetAsync <assetId> <newOwner>")
+			return
+		}
+		assetId := os.Args[2]
+		newOwner := os.Args[3]
+		transferAssetAsync(contract, assetId, newOwner)
+	case "exampleErrorHandling":
+		exampleErrorHandling(contract)
+	default:
+		fmt.Println("Operation not recognized.")
+	}
 }
 
 // newGrpcConnection creates a gRPC connection to the Gateway server.
@@ -231,8 +255,8 @@ func createAsset(contract *client.Contract) {
 }
 
 // Evaluate a transaction by assetID to query ledger state.
-func readAssetByID(contract *client.Contract) {
-	fmt.Printf("\n--> Evaluate Transaction: ReadAsset, function returns asset attributes\n")
+func readAssetByID(contract *client.Contract, assetId string) {
+	fmt.Printf("\n--> Evaluate Transaction: ReadAsset, function returns asset attributes for asset ID: %s\n", assetId)
 
 	evaluateResult, err := contract.EvaluateTransaction(methods[3], assetId)
 	if err != nil {
@@ -245,10 +269,10 @@ func readAssetByID(contract *client.Contract) {
 
 // Submit transaction asynchronously, blocking until the transaction has been sent to the orderer, and allowing
 // this thread to process the chaincode response (e.g. update a UI) without waiting for the commit notification
-func transferAssetAsync(contract *client.Contract) {
+func transferAssetAsync(contract *client.Contract, assetId, newOwner string) {
 	fmt.Printf("\n--> Async Submit Transaction: TransferAsset, updates existing asset owner")
 
-	submitResult, commit, err := contract.SubmitAsync(methods[4], client.WithArguments(assetId, "Mark"))
+	submitResult, commit, err := contract.SubmitAsync(methods[4], client.WithArguments(assetId, newOwner))
 	if err != nil {
 		panic(fmt.Errorf("failed to submit transaction asynchronously: %w", err))
 	}
