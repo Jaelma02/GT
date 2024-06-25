@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hyperledger/fabric-gateway/pkg/client"
@@ -326,33 +327,32 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	fmt.Printf("\n--> Benchmarking CreateAsset at %d TPS\n", tps)
 
 	interval := time.Second / time.Duration(tps) // Calculating interval between transactions
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
 
-	count := 0
 	startTime := time.Now()
+	var wg sync.WaitGroup
+	wg.Add(numAssets)
 
-	for range ticker.C {
-		if count >= numAssets {
-			break
-		}
+	for i := 0; i < numAssets; i++ {
+		time.Sleep(interval) // Sleep for the calculated interval
 
-		hash := generateRandomHash()
+		go func() {
+			defer wg.Done()
 
-		_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
-		if err != nil {
-			panic(fmt.Errorf("failed to submit transaction: %w", err))
-		}
-
-		count++
+			hash := generateRandomHash()
+			_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
+			if err != nil {
+				fmt.Printf("failed to submit transaction: %v\n", err)
+			}
+		}()
 	}
 
+	wg.Wait()
 	endTime := time.Now()
 	elapsedTime := endTime.Sub(startTime)
-	transactionsPerSecond := float64(count) / elapsedTime.Seconds()
+	transactionsPerSecond := float64(numAssets) / elapsedTime.Seconds()
 
 	fmt.Printf("\n*** Benchmarking Complete ***\n")
-	fmt.Printf("Transactions executed: %d\n", count)
+	fmt.Printf("Transactions executed: %d\n", numAssets)
 	fmt.Printf("Elapsed time: %v\n", elapsedTime)
 	fmt.Printf("TPS achieved: %.2f\n", transactionsPerSecond)
 }
