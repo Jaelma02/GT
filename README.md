@@ -4,7 +4,7 @@ Este projeto, chamado HLF-PET, demonstra como interagir com uma rede Hyperledger
 
 ## Pré-requisitos
 
-1. Go 1.16+ instalado.
+1. Go 1.21+ instalado.
 2. Hyperledger Fabric test network configurada e em execução.
 3. Certificados e chaves configurados no diretório correto.
 
@@ -21,7 +21,7 @@ Este projeto, chamado HLF-PET, demonstra como interagir com uma rede Hyperledger
 
 1. Clone este repositório:
 
-        git clone https://github.com/seu-usuario/hlf-pet.git
+        git clone https://github.com/Ericksulino/HLF_PET_go.git
         cd hlf-pet
 
 2. Baixe as dependências do Go:
@@ -45,7 +45,7 @@ Certifique-se de que os caminhos para os certificados e chaves TLS estão corret
 Para compilar e executar o código, use os seguintes comandos:
 
     go build -o fabric-client client.go
-    ./fabric-client -action=<ação> [opções]
+    ./fabric-client <ação> [opções]
 
 #### Ações Disponíveis:
 
@@ -55,37 +55,32 @@ initLedger: Inicializa o ledger com um conjunto de dados de ativos.
 
 transferAsset: Transfere a propriedade de um ativo.
 
-    ./fabric-client -action=transferAsset -id=<AssetID> -newOwner=<NovoProprietário>
+    ./fabric-client transferAsset -id=<AssetID> -newOwner=<NovoProprietário>
  
 createAsset: Cria um novo ativo no ledger.
-    ./fabric-client -action=createAsset -num=<Número>
+    ./fabric-client createAsset <Número>
 
-createAssetEndorse: Cria um novo ativo mostrando todas as etapas da criação.
+createAssetBench: Realiza benchmarking para criar ativos a uma taxa específica.
+    ./fabric-client createAssetBench <TPS> <Número>
 
-    ./fabric-client -action=createAssetEndorse -num=<Número> -benchmark=<Tipo>
+getAllAssets: Retorna todos os ativos atuais no ledger.
 
-getAll: Retorna todos os ativos atuais no ledger.
+     ./fabric-client getAllAssets
 
-     ./fabric-client -action=getAll
+readAssetByID: Obtém os detalhes do ativo por ID.
 
-getByKey: Obtém os detalhes do ativo por ID.
-
-    ./fabric-client -action=getByKey -key=<Chave>
-
-updateAsset: Atualiza um ativo que não existe.
-
-    ./fabric-client -action=updateAsset -key=<Chave>
+    ./fabric-client readAssetByID <ID>
 
 ## Exemplo de Uso
 
 Para inicializar o ledger:
 
-    ./fabric-client -action=initLedger
+    ./fabric-client initLedger
 
 Para criar um novo ativo:
 
-    ./fabric-client -action=createAsset -num=1
+    ./fabric-client createAsset 10
 
 Para transferir um ativo:
 
-    ./fabric-client -action=transferAsset -id=asset1 -newOwner=JohnDoe
+    ./fabric-client transferAsset asset1 JohnDoe
