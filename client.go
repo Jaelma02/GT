@@ -117,26 +117,23 @@ func main() {
 	case "createAssetBench":
 		tps := 10        // Valor padrão para TPS
 		numAssets := 100 // Número padrão de assets a serem criados
-
-		/*
-			if len(os.Args) >= 3 {
-				tpsVal, err := strconv.Atoi(os.Args[2])
-				if err == nil {
-					tps = tpsVal
-				} else {
-					fmt.Println("Error converting TPS, using default value of 10.")
-				}
+		if len(os.Args) >= 3 {
+			tpsVal, err := strconv.Atoi(os.Args[2])
+			if err == nil {
+				tps = tpsVal
+			} else {
+				fmt.Println("Error converting TPS, using default value of 10.")
 			}
+		}
 
-			if len(os.Args) >= 4 {
-				numAssetsVal, err := strconv.Atoi(os.Args[3])
-				if err == nil {
-					numAssets = numAssetsVal
-				} else {
-					fmt.Println("Error converting number of assets, using default value of 100.")
-				}
+		if len(os.Args) >= 4 {
+			numAssetsVal, err := strconv.Atoi(os.Args[3])
+			if err == nil {
+				numAssets = numAssetsVal
+			} else {
+				fmt.Println("Error converting number of assets, using default value of 100.")
 			}
-		*/
+		}
 		createAssetBench(contract, tps, numAssets)
 	case "exampleErrorHandling":
 		exampleErrorHandling(contract)
