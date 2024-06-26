@@ -22,7 +22,7 @@ Este projeto, chamado HLF-PET, demonstra como interagir com uma rede Hyperledger
 1. Clone este repositório:
 
         git clone https://github.com/Ericksulino/HLF_PET_go.git
-        cd hlf-pet
+        cd HLF_PET_go
 
 2. Baixe as dependências do Go:
         go mod tidy
