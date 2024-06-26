@@ -138,18 +138,6 @@ func main() {
 			}
 		*/
 		createAssetBench(contract, tps, numAssets)
-
-		// Verifica se foi fornecido o número de assets como argumento
-		if len(os.Args) >= 4 {
-			numAssetsVal, err := strconv.Atoi(os.Args[3])
-			if err == nil {
-				numAssets = numAssetsVal
-			} else {
-				fmt.Println("Erro ao converter número de assets, usando o valor padrão de 100.")
-			}
-		}
-
-		createAssetBench(contract, tps, numAssets)
 	case "exampleErrorHandling":
 		exampleErrorHandling(contract)
 	default:
@@ -343,8 +331,6 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 			_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
 			if err != nil {
 				fmt.Printf("failed to submit transaction: %v\n", err)
-			} else {
-				fmt.Printf("*** Transaction %d committed successfully\n", i+1)
 			}
 		}(i)
 	}
