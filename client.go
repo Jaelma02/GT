@@ -35,7 +35,7 @@ const (
 	certPath     = cryptoPath + "/users/User1@org1.example.com/msp/signcerts"
 	keyPath      = cryptoPath + "/users/User1@org1.example.com/msp/keystore"
 	tlsCertPath  = cryptoPath + "/peers/peer0.org1.example.com/tls/ca.crt"
-	peerEndpoint = "dns:///localhost:7051"
+	peerEndpoint = "dns:///200.137.163.231:7051"
 	gatewayPeer  = "peer0.org1.example.com"
 )
 
@@ -135,7 +135,9 @@ func main() {
 				fmt.Println("Error converting number of assets, using default value of 100.")
 			}
 		}
+
 		createAssetBench(contract, tps, numAssets)
+
 		// Verifica se foi fornecido o número de assets como argumento
 		if len(os.Args) >= 4 {
 			numAssetsVal, err := strconv.Atoi(os.Args[3])
@@ -331,16 +333,17 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	wg.Add(numAssets)
 
 	for i := 0; i < numAssets; i++ {
-		go func(i int) {
+		time.Sleep(interval) // Sleep for the calculated interval
+
+		go func() {
 			defer wg.Done()
-			time.Sleep(interval * time.Duration(i)) // Sleep for the calculated interval
 
 			hash := generateRandomHash()
 			_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
 			if err != nil {
 				fmt.Printf("failed to submit transaction: %v\n", err)
 			}
-		}(i)
+		}()
 	}
 
 	wg.Wait()
