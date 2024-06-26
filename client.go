@@ -327,24 +327,26 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 
 	fmt.Printf("\n--> Benchmarking CreateAsset at %d TPS\n", tps)
 
-	interval := time.Second / time.Duration(tps) // Calculating interval between transactions
+	interval := time.Second / time.Duration(tps)
 
 	startTime := time.Now()
 	var wg sync.WaitGroup
 	wg.Add(numAssets)
 
 	for i := 0; i < numAssets; i++ {
-		time.Sleep(interval) // Sleep for the calculated interval
-
-		go func() {
+		go func(i int) {
 			defer wg.Done()
+
+			time.Sleep(time.Duration(i) * interval) // Distribute transactions over the interval
 
 			hash := generateRandomHash()
 			_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
 			if err != nil {
 				fmt.Printf("failed to submit transaction: %v\n", err)
+			} else {
+				fmt.Printf("*** Transaction %d committed successfully\n", i+1)
 			}
-		}()
+		}(i)
 	}
 
 	wg.Wait()
