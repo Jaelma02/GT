@@ -50,12 +50,10 @@ Para compilar e executar o código, use os seguintes comandos:
 #### Ações Disponíveis:
 
 initLedger: Inicializa o ledger com um conjunto de dados de ativos.
-
-    ./fabric-client -action=initLedger
+    ./fabric-client initLedger
 
 transferAsset: Transfere a propriedade de um ativo.
-
-    ./fabric-client transferAsset -id=<AssetID> -newOwner=<NovoProprietário>
+    ./fabric-client transferAsset <AssetID> <NovoProprietário>
  
 createAsset: Cria um novo ativo no ledger.
     ./fabric-client createAsset <Número>
