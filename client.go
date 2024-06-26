@@ -313,8 +313,8 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	fmt.Printf("\n--> Benchmarking CreateAsset at %d TPS\n", tps)
 
 	interval := time.Second / time.Duration(tps)
-
 	startTime := time.Now()
+
 	var wg sync.WaitGroup
 	wg.Add(numAssets)
 
@@ -322,12 +322,14 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 		go func(i int) {
 			defer wg.Done()
 
-			time.Sleep(time.Duration(i) * interval) // Distribute transactions over the interval
+			time.Sleep(time.Duration(i) * interval)
 
 			hash := generateRandomHash()
 			_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
 			if err != nil {
-				fmt.Printf("failed to submit transaction: %v\n", err)
+				fmt.Printf("Transaction %d failed: %v\n", i, err)
+			} else {
+				fmt.Printf("Transaction %d (%s) committed successfully\n", i, hash)
 			}
 		}(i)
 	}
@@ -335,12 +337,11 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	wg.Wait()
 	endTime := time.Now()
 	elapsedTime := endTime.Sub(startTime)
-	transactionsPerSecond := float64(numAssets) / elapsedTime.Seconds()
 
 	fmt.Printf("\n*** Benchmarking Complete ***\n")
 	fmt.Printf("Transactions executed: %d\n", numAssets)
-	fmt.Printf("Elapsed time: %v\n", elapsedTime)
-	fmt.Printf("TPS achieved: %.2f\n", transactionsPerSecond)
+	fmt.Printf("Elapsed time: %s\n", elapsedTime)
+	fmt.Printf("TPS achieved: %.2f\n", float64(numAssets)/elapsedTime.Seconds())
 }
 
 // Evaluate a transaction by assetID to query ledger state.
