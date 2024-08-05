@@ -301,7 +301,6 @@ func createAssets(contract *client.Contract, n int) {
 	}
 }
 
-/*
 func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	if tps <= 0 {
 		fmt.Println("Invalid TPS value. Please provide a positive integer.")
@@ -375,92 +374,6 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	fmt.Printf("| Transactions executed | Elapsed time   | TPS achieved | Average Latency   |\n")
 	fmt.Printf("------------------------------------------------------------------------------\n")
 	fmt.Printf("| %-21d | %-14s | %-12.2f | %-17s |\n", numAssets, elapsedTime.String(), transactionsPerSecond, averageLatency.String())
-	fmt.Printf("------------------------------------------------------------------------------\n")
-}
-*/
-
-func createAssetBench(contract *client.Contract, tps int, numAssets int) {
-	if tps <= 0 {
-		fmt.Println("Invalid TPS value. Please provide a positive integer.")
-		return
-	}
-	if numAssets <= 0 {
-		numAssets = 1
-	}
-
-	fmt.Printf("\n--> Benchmarking CreateAsset at %d TPS\n", tps)
-
-	interval := time.Second / time.Duration(tps)
-
-	startTime := time.Now()
-	var wg sync.WaitGroup
-	wg.Add(numAssets)
-
-	// Semaphore to limit concurrency
-	concurrencyLimit := 450
-	sem := make(chan struct{}, concurrencyLimit)
-
-	// Metrics collection
-	var (
-		successfulTransactions int
-		totalElapsedTime       time.Duration
-		totalTPS               float64
-		totalLatency           time.Duration
-	)
-
-	// Channel to collect latencies
-	latencyCh := make(chan time.Duration, numAssets)
-
-	for i := 0; i < numAssets; i++ {
-		time.Sleep(time.Duration(i) * interval) // Maintain desired TPS rate
-		sem <- struct{}{}                       // Acquire semaphore
-		go func(i int) {
-			defer wg.Done()
-			defer func() { <-sem }() // Release semaphore
-
-			hash := generateRandomHash()
-
-			txStartTime := time.Now()
-			_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
-			if err != nil {
-				fmt.Printf("failed to submit transaction: %v\n", err)
-				return
-			}
-			txEndTime := time.Now()
-
-			// Increment successful transactions count
-			successfulTransactions++
-
-			// Calculate latency
-			latency := txEndTime.Sub(txStartTime)
-			latencyCh <- latency
-
-			// Accumulate metrics
-			totalElapsedTime += txEndTime.Sub(txStartTime)
-			totalTPS += 1 / latency.Seconds()
-		}(i)
-	}
-
-	wg.Wait()
-	close(latencyCh)
-
-	endTime := time.Now()
-	elapsedTime := endTime.Sub(startTime)
-	transactionsPerSecond := float64(successfulTransactions) / elapsedTime.Seconds()
-
-	// Calculate average latency
-	var totalLatencySeconds float64
-	for latency := range latencyCh {
-		totalLatency += latency
-		totalLatencySeconds += latency.Seconds()
-	}
-	averageLatency := totalLatency / time.Duration(successfulTransactions)
-
-	fmt.Printf("\n*** Benchmarking Complete ***\n")
-	fmt.Printf("------------------------------------------------------------------------------\n")
-	fmt.Printf("| Transactions executed | Elapsed time   | TPS achieved | Average Latency   |\n")
-	fmt.Printf("------------------------------------------------------------------------------\n")
-	fmt.Printf("| %-21d | %-14s | %-12.2f | %-17s |\n", successfulTransactions, elapsedTime.String(), transactionsPerSecond, averageLatency.String())
 	fmt.Printf("------------------------------------------------------------------------------\n")
 }
 
