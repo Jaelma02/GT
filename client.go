@@ -396,37 +396,33 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	var wg sync.WaitGroup
 	wg.Add(numAssets)
 
-	// Semaphore to limit concurrency
-	concurrencyLimit := 450
-	sem := make(chan struct{}, concurrencyLimit)
-
 	// Metrics collection
 	var (
-		successfulTransactions int
 		totalElapsedTime       time.Duration
 		totalTPS               float64
 		totalLatency           time.Duration
+		successfulTransactions int
 	)
 
 	// Channel to collect latencies
 	latencyCh := make(chan time.Duration, numAssets)
 
 	for i := 0; i < numAssets; i++ {
-		time.Sleep(time.Duration(i) * interval) // Maintain desired TPS rate
-		sem <- struct{}{}                       // Acquire semaphore
 		go func(i int) {
 			defer wg.Done()
-			defer func() { <-sem }() // Release semaphore
+
+			time.Sleep(time.Duration(i) * interval) // Distribute transactions over the interval
 
 			hash := generateRandomHash()
 
 			txStartTime := time.Now()
 			_, err := contract.SubmitTransaction(methods[1], hash, "yellow", "5", "Tom", "1300")
+			txEndTime := time.Now()
+
 			if err != nil {
 				fmt.Printf("failed to submit transaction: %v\n", err)
 				return
 			}
-			txEndTime := time.Now()
 
 			// Increment successful transactions count
 			successfulTransactions++
@@ -458,9 +454,9 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 
 	fmt.Printf("\n*** Benchmarking Complete ***\n")
 	fmt.Printf("------------------------------------------------------------------------------\n")
-	fmt.Printf("| Transactions executed | Elapsed time   | TPS achieved | Average Latency   |\n")
+	fmt.Printf("| Successful Transactions | Transactions executed | Elapsed time   | TPS achieved | Average Latency   |\n")
 	fmt.Printf("------------------------------------------------------------------------------\n")
-	fmt.Printf("| %-21d | %-14s | %-12.2f | %-17s |\n", successfulTransactions, elapsedTime.String(), transactionsPerSecond, averageLatency.String())
+	fmt.Printf("| %-23d | %-21d | %-14s | %-12.2f | %-17s |\n", successfulTransactions, numAssets, elapsedTime.String(), transactionsPerSecond, averageLatency.String())
 	fmt.Printf("------------------------------------------------------------------------------\n")
 }
 
