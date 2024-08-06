@@ -375,11 +375,11 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	averageLatency := totalLatency / time.Duration(successfulTransactions)
 
 	fmt.Printf("\n*** Benchmarking Complete ***\n")
-	fmt.Printf("------------------------------------------------------------------------------\n")
+	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
 	fmt.Printf("| Transactions executed | Successful Transactions | Elapsed time   | TPS achieved | Average Latency   |\n")
 	fmt.Printf("------------------------------------------------------------------------------\n")
 	fmt.Printf("| %-21d | %-23d | %-14s | %-12.2f | %-17s |\n", numAssets, successfulTransactions, elapsedTime.String(), transactionsPerSecond, averageLatency.String())
-	fmt.Printf("------------------------------------------------------------------------------\n")
+	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
 }
 
 // Evaluate a transaction by assetID to query ledger state.
