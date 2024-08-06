@@ -377,7 +377,7 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	fmt.Printf("\n*** Benchmarking Complete ***\n")
 	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
 	fmt.Printf("| Transactions executed | Successful Transactions | Elapsed time   | TPS achieved | Average Latency   |\n")
-	fmt.Printf("------------------------------------------------------------------------------\n")
+	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
 	fmt.Printf("| %-21d | %-23d | %-14s | %-12.2f | %-17s |\n", numAssets, successfulTransactions, elapsedTime.String(), transactionsPerSecond, averageLatency.String())
 	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
 }
