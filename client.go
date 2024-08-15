@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"strconv"
@@ -68,7 +69,8 @@ func main() {
 	defer gw.Close()
 
 	// Override default values for chaincode and channel name as they may differ in testing contexts.
-	chaincodeName := "fabcar"
+	//chaincodeName := "fabcar"
+	chaincodeName := "basic"
 	if ccname := os.Getenv("CHAINCODE_NAME"); ccname != "" {
 		chaincodeName = ccname
 	}
@@ -135,6 +137,18 @@ func main() {
 			}
 		}
 		createAssetBench(contract, tps, numAssets)
+	case "createAssetEndorse":
+		var num int
+		var err error
+		if len(os.Args) == 3 {
+			num, err = strconv.Atoi(os.Args[2])
+			if err != nil {
+				log.Fatalf("Número inválido: %v", err)
+			}
+		} else {
+			num = 1 // Valor padrão
+		}
+		createAssetEndorse(contract, num)
 	case "exampleErrorHandling":
 		exampleErrorHandling(contract)
 	default:
@@ -220,12 +234,22 @@ func readFirstFile(dirPath string) ([]byte, error) {
 	return os.ReadFile(path.Join(dirPath, fileNames[0]))
 }
 
+/*
 var methods = []string{
 	"InitLedger",
 	"CreateCar",
 	"QueryAllCars",
 	"QueryCar",
 	"ChangeCarOwner",
+}
+*/
+
+var methods = []string{
+	"InitLedger",
+	"CreateAsset",
+	"GetAllAssets",
+	"ReadAsset",
+	"TransferAsset",
 }
 
 func generateRandomHash() string {
@@ -380,6 +404,84 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
 	fmt.Printf("| %-21d | %-23d | %-14s | %-12.2f | %-17s |\n", numAssets, successfulTransactions, elapsedTime.String(), transactionsPerSecond, averageLatency.String())
 	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
+}
+
+func createAssetEndorse(contract *client.Contract, n int) {
+	if n <= 0 {
+		n = 1 // Set n to 1 if it's zero or negative
+	}
+
+	var totalEndorseTime, totalOrderingTime, totalCommitTime, totalElapsedTime time.Duration
+	successfulTransactions := 0
+
+	//fmt.Printf("\n--> Submit Transactions: CreateAsset, creates %d new assets with ID, Color, Size, Owner, and AppraisedValue arguments\n", n)
+
+	for i := 0; i < n; i++ {
+		hash := generateRandomHash()
+
+		// Medir o tempo de endosso
+		startTime := time.Now()
+		proposal, err := contract.NewProposal(methods[1], client.WithArguments(hash, "yellow", "5", "Tom", "1300"))
+		if err != nil {
+			panic(fmt.Errorf("failed to create proposal: %w", err))
+		}
+
+		endorseStartTime := time.Now()
+		transaction, err := proposal.Endorse()
+		if err != nil {
+			fmt.Printf("*** Endorsement failed for transaction %s\n", hash)
+			continue
+		}
+		endorseEndTime := time.Now()
+		endorseTime := endorseEndTime.Sub(endorseStartTime)
+		totalEndorseTime += endorseTime
+
+		// Medir o tempo de ordenação
+		orderingStartTime := time.Now()
+		commit, err := transaction.Submit()
+		if err != nil {
+			fmt.Printf("*** Ordering failed for transaction %s\n", hash)
+			continue
+		}
+		orderingEndTime := time.Now()
+		orderingTime := orderingEndTime.Sub(orderingStartTime)
+		totalOrderingTime += orderingTime
+
+		// Medir o tempo de commit
+		commitStartTime := time.Now()
+		status, err := commit.Status()
+		if err != nil || !status.Successful {
+			fmt.Printf("*** Commit failed for transaction %s\n", hash)
+			continue
+		}
+		commitEndTime := time.Now()
+		commitTime := commitEndTime.Sub(commitStartTime)
+		totalCommitTime += commitTime
+
+		// Tempo total da transação
+		endTime := time.Now()
+		elapsedTime := endTime.Sub(startTime)
+		totalElapsedTime += elapsedTime
+
+		fmt.Printf("*** Transaction %s committed successfully\n", hash)
+		successfulTransactions++
+	}
+
+	// Cálculos finais
+	averageEndorseTime := totalEndorseTime / time.Duration(successfulTransactions)
+	averageOrderingTime := totalOrderingTime / time.Duration(successfulTransactions)
+	averageCommitTime := totalCommitTime / time.Duration(successfulTransactions)
+	averageTotalTime := totalElapsedTime / time.Duration(successfulTransactions)
+	tps := float64(successfulTransactions) / totalElapsedTime.Seconds()
+
+	// Exibir os resultados em uma tabela
+	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------\n")
+	fmt.Printf("| %-23s | %-23s | %-12s | %-13s | %-11s | %-10s | %-12s |\n",
+		"Transactions executed", "Successful Transactions", "Endorse Time", "Ordering Time", "Commit Time", "Total Time", "TPS achieved")
+	fmt.Printf("| %-23d | %-23d | %-12v | %-13v | %-11v | %-10v | %-12.2f |\n",
+		n, successfulTransactions, averageEndorseTime, averageOrderingTime, averageCommitTime, averageTotalTime, tps)
+	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------\n")
+
 }
 
 // Evaluate a transaction by assetID to query ledger state.
