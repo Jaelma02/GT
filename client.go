@@ -70,7 +70,7 @@ func main() {
 
 	// Override default values for chaincode and channel name as they may differ in testing contexts.
 	//chaincodeName := "fabcar"
-	chaincodeName := "basic"
+	chaincodeName := "chainTest"
 	if ccname := os.Getenv("CHAINCODE_NAME"); ccname != "" {
 		chaincodeName = ccname
 	}
@@ -149,6 +149,19 @@ func main() {
 			num = 1 // Valor padrão
 		}
 		createAssetEndorse(contract, num)
+	case "createAssetBenchDetailed":
+		if len(os.Args) < 4 {
+			log.Fatalf("Uso: %s createAssetBenchDetailed <TPS> <Número de Ativos>", os.Args[0])
+		}
+		tps, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			log.Fatalf("TPS inválido: %v", err)
+		}
+		numAssets, err := strconv.Atoi(os.Args[3])
+		if err != nil {
+			log.Fatalf("Número de Ativos inválido: %v", err)
+		}
+		createAssetBenchDetailed(contract, tps, numAssets)
 	case "exampleErrorHandling":
 		exampleErrorHandling(contract)
 	default:
@@ -482,6 +495,144 @@ func createAssetEndorse(contract *client.Contract, n int) {
 		n, successfulTransactions, averageEndorseTime, averageOrderingTime, averageCommitTime, averageTotalTime, tps)
 	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------\n")
 
+}
+
+func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int) {
+	if tps <= 0 {
+		fmt.Println("Invalid TPS value. Please provide a positive integer.")
+		return
+	}
+	if numAssets <= 0 {
+		numAssets = 1
+	}
+
+	fmt.Printf("\n--> Benchmarking CreateAsset at %d TPS\n", tps)
+
+	interval := time.Second / time.Duration(tps)
+
+	startTime := time.Now()
+	var wg sync.WaitGroup
+	wg.Add(numAssets)
+
+	// Metrics collection
+	var (
+		totalElapsedTime       time.Duration
+		totalTPS               float64
+		successfulTransactions int
+	)
+
+	// Channels to collect latencies and other times
+	latencyCh := make(chan time.Duration, numAssets)
+	endorseTimeCh := make(chan time.Duration, numAssets)
+	orderingTimeCh := make(chan time.Duration, numAssets)
+	commitTimeCh := make(chan time.Duration, numAssets)
+
+	for i := 0; i < numAssets; i++ {
+		go func(i int) {
+			defer wg.Done()
+
+			time.Sleep(time.Duration(i) * interval) // Distribute transactions over the interval
+
+			hash := generateRandomHash()
+
+			txStartTime := time.Now()
+
+			// Start of endorse time measurement
+			endorseStartTime := time.Now()
+			proposal, err := contract.NewProposal(methods[1], client.WithArguments(hash, "yellow", "5", "Tom", "1300"))
+			if err != nil {
+				fmt.Printf("failed to create proposal: %v\n", err)
+				return
+			}
+			transaction, err := proposal.Endorse()
+			if err != nil {
+				fmt.Printf("failed to endorse transaction: %v\n", err)
+				return
+			}
+			endorseEndTime := time.Now()
+			endorseTimeCh <- endorseEndTime.Sub(endorseStartTime)
+
+			// Start of ordering time measurement
+			orderingStartTime := time.Now()
+			commit, err := transaction.Submit()
+			if err != nil {
+				fmt.Printf("failed to submit transaction: %v\n", err)
+				return
+			}
+			orderingEndTime := time.Now()
+			orderingTimeCh <- orderingEndTime.Sub(orderingStartTime)
+
+			// Start of commit time measurement
+			commitStartTime := time.Now()
+			status, err := commit.Status()
+			if err != nil || !status.Successful {
+				fmt.Printf("failed to commit transaction: %v\n", err)
+				return
+			}
+			commitEndTime := time.Now()
+			commitTimeCh <- commitEndTime.Sub(commitStartTime)
+
+			txEndTime := time.Now()
+
+			// Increment successful transactions count
+			successfulTransactions++
+
+			// Calculate latency
+			latency := txEndTime.Sub(txStartTime)
+			latencyCh <- latency
+
+			// Accumulate metrics
+			totalElapsedTime += txEndTime.Sub(txStartTime)
+			totalTPS += 1 / latency.Seconds()
+		}(i)
+	}
+
+	wg.Wait()
+	close(latencyCh)
+	close(endorseTimeCh)
+	close(orderingTimeCh)
+	close(commitTimeCh)
+
+	endTime := time.Now()
+	elapsedTime := endTime.Sub(startTime)
+	transactionsPerSecond := float64(successfulTransactions) / elapsedTime.Seconds()
+
+	// Calculate average latencies and times
+	var (
+		totalEndorseTime  time.Duration
+		totalOrderingTime time.Duration
+		totalCommitTime   time.Duration
+		totalLatency      time.Duration
+	)
+	var count int
+
+	for latency := range latencyCh {
+		totalLatency += latency
+		count++
+	}
+	for endorseTime := range endorseTimeCh {
+		totalEndorseTime += endorseTime
+	}
+	for orderingTime := range orderingTimeCh {
+		totalOrderingTime += orderingTime
+	}
+	for commitTime := range commitTimeCh {
+		totalCommitTime += commitTime
+	}
+
+	averageLatency := totalLatency / time.Duration(successfulTransactions)
+	averageEndorseTime := totalEndorseTime / time.Duration(successfulTransactions)
+	averageOrderingTime := totalOrderingTime / time.Duration(successfulTransactions)
+	averageCommitTime := totalCommitTime / time.Duration(successfulTransactions)
+	totalTime := averageEndorseTime + averageOrderingTime + averageCommitTime
+
+	// Print results
+	fmt.Printf("\n*** Benchmarking Complete ***\n")
+	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
+	fmt.Printf("| Transactions executed | Successful Transactions | Endorse Time | Ordering Time | Commit Time | Total Time | Average Latency | TPS achieved |\n")
+	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
+	fmt.Printf("| %-21d | %-23d | %-12s | %-12s | %-10s | %-10s | %-15s | %-12.2f |\n", numAssets, successfulTransactions, averageEndorseTime.String(), averageOrderingTime.String(), averageCommitTime.String(), totalTime.String(), averageLatency.String(), transactionsPerSecond)
+	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
 }
 
 // Evaluate a transaction by assetID to query ledger state.

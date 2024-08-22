@@ -66,6 +66,14 @@ createAssetBench: Realiza benchmarking para criar ativos a uma taxa específica.
 
     ./fabric-client createAssetBench <TPS> <Número>
 
+createAssetEndorse Cria um novo ativo no ledger, mas com as fases de ordenação, endosso e commit.
+
+    ./fabric-client createAssetEndorse <Número>
+
+createAssetBenchDetailed: Realiza benchmarking para criar ativos a uma taxa específica com as fases de ordenação, endosso e commit
+
+    ./fabric-client createAssetDetailed <TPS> <Número>
+
 getAllAssets: Retorna todos os ativos atuais no ledger.
 
      ./fabric-client getAllAssets
