@@ -32,7 +32,7 @@ import (
 
 const (
 	mspID        = "Org1MSP"
-	cryptoPath   = "../peerOrganizations/org1.example.com"
+	cryptoPath   = "../peerOrganizations_A/org1.example.com"
 	certPath     = cryptoPath + "/users/User1@org1.example.com/msp/signcerts"
 	keyPath      = cryptoPath + "/users/User1@org1.example.com/msp/keystore"
 	tlsCertPath  = cryptoPath + "/peers/peer0.org1.example.com/tls/ca.crt"
@@ -70,7 +70,7 @@ func main() {
 
 	// Override default values for chaincode and channel name as they may differ in testing contexts.
 	//chaincodeName := "fabcar"
-	chaincodeName := "chainTest"
+	chaincodeName := "basic"
 	if ccname := os.Getenv("CHAINCODE_NAME"); ccname != "" {
 		chaincodeName = ccname
 	}
@@ -527,6 +527,16 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 	orderingTimeCh := make(chan time.Duration, numAssets)
 	commitTimeCh := make(chan time.Duration, numAssets)
 
+	// Slice to store transaction metrics
+	type TransactionMetrics struct {
+		ID           int
+		EndorseTime  time.Duration
+		OrderingTime time.Duration
+		CommitTime   time.Duration
+		TotalLatency time.Duration
+	}
+	transactionsMetrics := make([]TransactionMetrics, numAssets)
+
 	for i := 0; i < numAssets; i++ {
 		go func(i int) {
 			defer wg.Done()
@@ -550,7 +560,8 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 				return
 			}
 			endorseEndTime := time.Now()
-			endorseTimeCh <- endorseEndTime.Sub(endorseStartTime)
+			endorseDuration := endorseEndTime.Sub(endorseStartTime)
+			endorseTimeCh <- endorseDuration
 
 			// Start of ordering time measurement
 			orderingStartTime := time.Now()
@@ -560,7 +571,8 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 				return
 			}
 			orderingEndTime := time.Now()
-			orderingTimeCh <- orderingEndTime.Sub(orderingStartTime)
+			orderingDuration := orderingEndTime.Sub(orderingStartTime)
+			orderingTimeCh <- orderingDuration
 
 			// Start of commit time measurement
 			commitStartTime := time.Now()
@@ -570,7 +582,8 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 				return
 			}
 			commitEndTime := time.Now()
-			commitTimeCh <- commitEndTime.Sub(commitStartTime)
+			commitDuration := commitEndTime.Sub(commitStartTime)
+			commitTimeCh <- commitDuration
 
 			txEndTime := time.Now()
 
@@ -580,6 +593,15 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 			// Calculate latency
 			latency := txEndTime.Sub(txStartTime)
 			latencyCh <- latency
+
+			// Store metrics for this transaction
+			transactionsMetrics[i] = TransactionMetrics{
+				ID:           i + 1,
+				EndorseTime:  endorseDuration,
+				OrderingTime: orderingDuration,
+				CommitTime:   commitDuration,
+				TotalLatency: latency,
+			}
 
 			// Accumulate metrics
 			totalElapsedTime += txEndTime.Sub(txStartTime)
@@ -604,11 +626,9 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 		totalCommitTime   time.Duration
 		totalLatency      time.Duration
 	)
-	var count int
 
 	for latency := range latencyCh {
 		totalLatency += latency
-		count++
 	}
 	for endorseTime := range endorseTimeCh {
 		totalEndorseTime += endorseTime
@@ -626,8 +646,19 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 	averageCommitTime := totalCommitTime / time.Duration(successfulTransactions)
 	totalTime := averageEndorseTime + averageOrderingTime + averageCommitTime
 
-	// Print results
-	fmt.Printf("\n*** Benchmarking Complete ***\n")
+	// Print detailed results for each transaction
+	fmt.Printf("\n*** Detailed Transaction Metrics ***\n")
+	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------\n")
+	fmt.Printf("| Transaction ID | Endorse Time | Ordering Time | Commit Time | Total Latency |\n")
+	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------\n")
+	for _, tx := range transactionsMetrics {
+		fmt.Printf("| %-14d | %-12s | %-12s | %-10s | %-13s |\n",
+			tx.ID, tx.EndorseTime.String(), tx.OrderingTime.String(), tx.CommitTime.String(), tx.TotalLatency.String())
+	}
+	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------\n")
+
+	// Print summary of average results
+	fmt.Printf("\n*** Benchmarking Summary ***\n")
 	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
 	fmt.Printf("| Transactions executed | Successful Transactions | Endorse Time | Ordering Time | Commit Time | Total Time | Average Latency | TPS achieved |\n")
 	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
