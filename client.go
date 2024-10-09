@@ -12,7 +12,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -507,41 +506,22 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 		numAssets = 1
 	}
 
-	fmt.Printf("\n--> Benchmarking CreateAsset at %d TPS\n", tps)
-
 	interval := time.Second / time.Duration(tps)
 
-	startTime := time.Now()
 	var wg sync.WaitGroup
 	wg.Add(numAssets)
 
-	// Create the CSV file for detailed results
-	csvFile, err := os.Create("detailed_benchmark_results.csv")
-	if err != nil {
-		fmt.Printf("Failed to create CSV file: %v\n", err)
-		return
-	}
-	defer csvFile.Close()
-
-	// Create a CSV writer
-	writer := csv.NewWriter(csvFile)
-	defer writer.Flush()
-
-	// Write the header for the CSV
-	writer.Write([]string{"Transaction", "Endorse Time (ms)", "Ordering Time (ms)", "Commit Time (ms)", "Total Time (ms)", "Latency (ms)"})
-
 	// Metrics collection
-	var (
-		totalElapsedTime       time.Duration
-		totalTPS               float64
-		successfulTransactions int
-	)
+	var successfulTransactions int
 
 	// Channels to collect latencies and other times
 	latencyCh := make(chan time.Duration, numAssets)
 	endorseTimeCh := make(chan time.Duration, numAssets)
 	orderingTimeCh := make(chan time.Duration, numAssets)
 	commitTimeCh := make(chan time.Duration, numAssets)
+
+	// Print the header for the CSV output
+	fmt.Println("Transaction,Endorse Time (ms),Ordering Time (ms),Commit Time (ms),Total Time (ms),Latency (ms),Timestamp (ms)")
 
 	for i := 0; i < numAssets; i++ {
 		go func(i int) {
@@ -551,11 +531,9 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 
 			hash := generateRandomHash()
 
-			txStartTime := time.Now()
-
 			// Start of endorse time measurement
 			endorseStartTime := time.Now()
-			proposal, err := contract.NewProposal(methods[1], client.WithArguments(hash, "yellow", "5", "Tom", "1300"))
+			proposal, err := contract.NewProposal("CreateAsset", client.WithArguments(hash, "yellow", "5", "Tom", "1300"))
 			if err != nil {
 				fmt.Printf("failed to create proposal: %v\n", err)
 				return
@@ -591,79 +569,81 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 			commitTime := commitEndTime.Sub(commitStartTime)
 			commitTimeCh <- commitTime
 
-			txEndTime := time.Now()
-
 			// Increment successful transactions count
 			successfulTransactions++
 
-			// Calculate latency
-			latency := txEndTime.Sub(txStartTime)
+			// Calculate total time and latency
+			totalTime := endorseTime + orderingTime + commitTime
+			latency := totalTime // A latência deve ser igual ao tempo total da transação
+
+			// Send the latency to the channel
 			latencyCh <- latency
 
-			// Accumulate metrics
-			totalElapsedTime += txEndTime.Sub(txStartTime)
-			totalTPS += 1 / latency.Seconds()
+			// Get timestamp in milliseconds
 
-			// Write detailed transaction data to the CSV
-			writer.Write([]string{
-				strconv.Itoa(i + 1),
-				fmt.Sprintf("%.3f", float64(endorseTime.Milliseconds())),
-				fmt.Sprintf("%.3f", float64(orderingTime.Milliseconds())),
-				fmt.Sprintf("%.3f", float64(commitTime.Milliseconds())),
-				fmt.Sprintf("%.3f", float64(endorseTime.Milliseconds()+orderingTime.Milliseconds()+commitTime.Milliseconds())),
-				fmt.Sprintf("%.3f", float64(latency.Milliseconds())),
-			})
+			// Print detailed transaction data in CSV format, including timestamp
+			txEndTime := time.Now()
+			fmt.Printf("%d,%.3f,%.3f,%.3f,%.3f,%.3f,%d\n",
+				i+1,
+				float64(endorseTime.Milliseconds()),
+				float64(orderingTime.Milliseconds()),
+				float64(commitTime.Milliseconds()),
+				float64(totalTime.Milliseconds()),
+				float64(latency.Milliseconds()),
+				//txEndTime.UnixNano()/int64(time.Millisecond)
+				txEndTime.UnixNano()/int64(time.Millisecond)) // Timestamp in ms
 		}(i)
 	}
 
 	wg.Wait()
+
+	// Close channels after waiting for goroutines to finish
 	close(latencyCh)
 	close(endorseTimeCh)
 	close(orderingTimeCh)
 	close(commitTimeCh)
 
-	endTime := time.Now()
-	elapsedTime := endTime.Sub(startTime)
-	transactionsPerSecond := float64(successfulTransactions) / elapsedTime.Seconds()
+	/*
+		// Calculate average latencies and times
+		var (
+			totalEndorseTime  time.Duration
+			totalOrderingTime time.Duration
+			totalCommitTime   time.Duration
+			totalLatency      time.Duration
+		)
 
-	// Calculate average latencies and times
-	var (
-		totalEndorseTime  time.Duration
-		totalOrderingTime time.Duration
-		totalCommitTime   time.Duration
-		totalLatency      time.Duration
-	)
-	var count int
+		// Collect results from channels
+		for latency := range latencyCh {
+			totalLatency += latency
+		}
+		for endorseTime := range endorseTimeCh {
+			totalEndorseTime += endorseTime
+		}
+		for orderingTime := range orderingTimeCh {
+			totalOrderingTime += orderingTime
+		}
+		for commitTime := range commitTimeCh {
+			totalCommitTime += commitTime
+		}
 
-	for latency := range latencyCh {
-		totalLatency += latency
-		count++
-	}
-	for endorseTime := range endorseTimeCh {
-		totalEndorseTime += endorseTime
-	}
-	for orderingTime := range orderingTimeCh {
-		totalOrderingTime += orderingTime
-	}
-	for commitTime := range commitTimeCh {
-		totalCommitTime += commitTime
-	}
+		averageLatency := totalLatency / time.Duration(successfulTransactions)
+		averageEndorseTime := totalEndorseTime / time.Duration(successfulTransactions)
+		averageOrderingTime := totalOrderingTime / time.Duration(successfulTransactions)
+		averageCommitTime := totalCommitTime / time.Duration(successfulTransactions)
+		totalTime := averageEndorseTime + averageOrderingTime + averageCommitTime
 
-	averageLatency := totalLatency / time.Duration(successfulTransactions)
-	averageEndorseTime := totalEndorseTime / time.Duration(successfulTransactions)
-	averageOrderingTime := totalOrderingTime / time.Duration(successfulTransactions)
-	averageCommitTime := totalCommitTime / time.Duration(successfulTransactions)
-	totalTime := averageEndorseTime + averageOrderingTime + averageCommitTime
+		// Calculate total TPS
+		totalElapsedTime = totalLatency + totalEndorseTime + totalOrderingTime + totalCommitTime
+		transactionsPerSecond := float64(successfulTransactions) / totalElapsedTime.Seconds()
 
-	// Print results summary
-	fmt.Printf("\n*** Benchmarking Complete ***\n")
-	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
-	fmt.Printf("| Transactions executed | Successful Transactions | Endorse Time | Ordering Time | Commit Time | Total Time | Average Latency | TPS achieved |\n")
-	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
-	fmt.Printf("| %-21d | %-23d | %-12s | %-12s | %-10s | %-10s | %-15s | %-12.2f |\n", numAssets, successfulTransactions, averageEndorseTime.String(), averageOrderingTime.String(), averageCommitTime.String(), totalTime.String(), averageLatency.String(), transactionsPerSecond)
-	fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
-
-	fmt.Println("Detailed results have been saved to 'detailed_benchmark_results.csv'.")
+		// Print results summary
+		fmt.Printf("\n*** Benchmarking Complete ***\n")
+		fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
+		fmt.Printf("| Transactions executed | Successful Transactions | Endorse Time | Ordering Time | Commit Time | Total Time | Average Latency | TPS achieved |\n")
+		fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
+		fmt.Printf("| %-21d | %-23d | %-12s | %-12s | %-10s | %-10s | %-15s | %-12.2f |\n", numAssets, successfulTransactions, averageEndorseTime.String(), averageOrderingTime.String(), averageCommitTime.String(), totalTime.String(), averageLatency.String(), transactionsPerSecond)
+		fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
+	*/
 }
 
 // Evaluate a transaction by assetID to query ledger state.
