@@ -74,6 +74,10 @@ createAssetBenchDetailed: Realiza benchmarking para criar ativos a uma taxa espe
 
     ./fabric-client createAssetBenchDetailed <TPS> <Número>
 
+createAssetBenchEnd: Realiza benchmarking para criar ativos a uma taxa específica com as fases de ordenação, endosso e commit, alem disso preve valores novos para BT e BS
+
+    ./fabric-client createAssetBenchEnd <TPS> <Número>
+
 getAllAssets: Retorna todos os ativos atuais no ledger.
 
      ./fabric-client getAllAssets

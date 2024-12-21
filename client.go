@@ -162,6 +162,19 @@ func main() {
 			log.Fatalf("Número de Ativos inválido: %v", err)
 		}
 		createAssetBenchDetailed(contract, tps, numAssets)
+	case "createAssetBenchEnd":
+		if len(os.Args) < 4 {
+			log.Fatalf("Uso: %s createAssetBench <TPS> <Número de Ativos>", os.Args[0])
+		}
+		tps, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			log.Fatalf("TPS inválido: %v", err)
+		}
+		numAssets, err := strconv.Atoi(os.Args[3])
+		if err != nil {
+			log.Fatalf("Número de Ativos inválido: %v", err)
+		}
+		createAssetBenchEnd(contract, tps, numAssets)
 	case "exampleErrorHandling":
 		exampleErrorHandling(contract)
 	default:
@@ -602,48 +615,192 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 	close(endorseTimeCh)
 	close(orderingTimeCh)
 	close(commitTimeCh)
+}
 
-	/*
-		// Calculate average latencies and times
-		var (
-			totalEndorseTime  time.Duration
-			totalOrderingTime time.Duration
-			totalCommitTime   time.Duration
-			totalLatency      time.Duration
-		)
+func predictBatchParameters(orderingTime, executionTime time.Duration, successfulTransactions int, elapsedTime time.Duration) (float64, float64) {
+	if successfulTransactions == 0 {
+		fmt.Println("No successful transactions. Cannot predict Batch Timeout or Batch Size.")
+		return 0.0, 0.0
+	}
 
-		// Collect results from channels
-		for latency := range latencyCh {
-			totalLatency += latency
-		}
-		for endorseTime := range endorseTimeCh {
-			totalEndorseTime += endorseTime
-		}
-		for orderingTime := range orderingTimeCh {
-			totalOrderingTime += orderingTime
-		}
-		for commitTime := range commitTimeCh {
-			totalCommitTime += commitTime
-		}
+	// Mean Time to Ordering (MTO) and Execution (MTE)
+	mto := orderingTime.Seconds() / float64(successfulTransactions)
+	mte := executionTime.Seconds() / float64(successfulTransactions)
 
-		averageLatency := totalLatency / time.Duration(successfulTransactions)
-		averageEndorseTime := totalEndorseTime / time.Duration(successfulTransactions)
-		averageOrderingTime := totalOrderingTime / time.Duration(successfulTransactions)
-		averageCommitTime := totalCommitTime / time.Duration(successfulTransactions)
-		totalTime := averageEndorseTime + averageOrderingTime + averageCommitTime
+	// Predicted Batch Timeout (BT)
+	predictedBT := mto + mte
 
-		// Calculate total TPS
-		totalElapsedTime = totalLatency + totalEndorseTime + totalOrderingTime + totalCommitTime
-		transactionsPerSecond := float64(successfulTransactions) / totalElapsedTime.Seconds()
+	// Throughput (TPS)
+	tps := float64(successfulTransactions) / elapsedTime.Seconds()
 
-		// Print results summary
-		fmt.Printf("\n*** Benchmarking Complete ***\n")
-		fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
-		fmt.Printf("| Transactions executed | Successful Transactions | Endorse Time | Ordering Time | Commit Time | Total Time | Average Latency | TPS achieved |\n")
-		fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
-		fmt.Printf("| %-21d | %-23d | %-12s | %-12s | %-10s | %-10s | %-15s | %-12.2f |\n", numAssets, successfulTransactions, averageEndorseTime.String(), averageOrderingTime.String(), averageCommitTime.String(), totalTime.String(), averageLatency.String(), transactionsPerSecond)
-		fmt.Printf("----------------------------------------------------------------------------------------------------------------------------------------------\n")
-	*/
+	// Predicted Batch Size (BS)
+	predictedBS := tps * predictedBT
+
+	return predictedBT, predictedBS
+}
+
+func createAssetBenchEnd(contract *client.Contract, tps int, numAssets int) {
+	if tps <= 0 {
+		fmt.Println("Invalid TPS value. Please provide a positive integer.")
+		return
+	}
+	if numAssets <= 0 {
+		numAssets = 1
+	}
+
+	interval := time.Second / time.Duration(tps)
+
+	var wg sync.WaitGroup
+	wg.Add(numAssets)
+
+	// Metrics collection
+	var successfulTransactions int
+	var mu sync.Mutex // To synchronize access to successfulTransactions
+
+	// Channels to collect latencies and other times
+	latencyCh := make(chan time.Duration, numAssets)
+	endorseTimeCh := make(chan time.Duration, numAssets)
+	orderingTimeCh := make(chan time.Duration, numAssets)
+	commitTimeCh := make(chan time.Duration, numAssets)
+
+	startTime := time.Now() // Start overall timer
+
+	for i := 0; i < numAssets; i++ {
+		go func(i int) {
+			defer wg.Done()
+
+			time.Sleep(time.Duration(i) * interval) // Distribute transactions over the interval
+
+			hash := generateRandomHash()
+
+			// Start of endorse time measurement
+			endorseStartTime := time.Now()
+			proposal, err := contract.NewProposal("CreateAsset", client.WithArguments(hash, "yellow", "5", "Tom", "1300"))
+			if err != nil {
+				fmt.Printf("Failed to create proposal: %v\n", err)
+				return
+			}
+			transaction, err := proposal.Endorse()
+			if err != nil {
+				fmt.Printf("Failed to endorse transaction: %v\n", err)
+				return
+			}
+			endorseEndTime := time.Now()
+			endorseTime := endorseEndTime.Sub(endorseStartTime)
+			endorseTimeCh <- endorseTime
+
+			// Start of ordering time measurement
+			orderingStartTime := time.Now()
+			commit, err := transaction.Submit()
+			if err != nil {
+				fmt.Printf("Failed to submit transaction: %v\n", err)
+				return
+			}
+			orderingEndTime := time.Now()
+			orderingTime := orderingEndTime.Sub(orderingStartTime)
+			orderingTimeCh <- orderingTime
+
+			// Start of commit time measurement
+			commitStartTime := time.Now()
+			status, err := commit.Status()
+			if err != nil || !status.Successful {
+				fmt.Printf("Failed to commit transaction: %v\n", err)
+				return
+			}
+			commitEndTime := time.Now()
+			commitTime := commitEndTime.Sub(commitStartTime)
+			commitTimeCh <- commitTime
+
+			// Increment successful transactions count
+			mu.Lock()
+			successfulTransactions++
+			mu.Unlock()
+
+			// Calculate total time and latency
+			totalTime := endorseTime + orderingTime + commitTime
+			latencyCh <- totalTime
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Close channels after waiting for goroutines to finish
+	close(latencyCh)
+	close(endorseTimeCh)
+	close(orderingTimeCh)
+	close(commitTimeCh)
+
+	endTime := time.Now() // End overall timer
+	elapsedTime := endTime.Sub(startTime)
+
+	// Calculate average latencies and times
+	var (
+		totalEndorseTime  time.Duration
+		totalOrderingTime time.Duration
+		totalCommitTime   time.Duration
+		totalLatency      time.Duration
+	)
+
+	// Collect results from channels
+	for latency := range latencyCh {
+		totalLatency += latency
+	}
+	for endorseTime := range endorseTimeCh {
+		totalEndorseTime += endorseTime
+	}
+	for orderingTime := range orderingTimeCh {
+		totalOrderingTime += orderingTime
+	}
+	for commitTime := range commitTimeCh {
+		totalCommitTime += commitTime
+	}
+
+	if successfulTransactions == 0 {
+		fmt.Println("No successful transactions. Cannot calculate metrics.")
+		return
+	}
+
+	averageLatency := totalLatency / time.Duration(successfulTransactions)
+	averageEndorseTime := totalEndorseTime / time.Duration(successfulTransactions)
+	averageOrderingTime := totalOrderingTime / time.Duration(successfulTransactions)
+	averageCommitTime := totalCommitTime / time.Duration(successfulTransactions)
+
+	// Calculate TPS (Transactions Per Second)
+	transactionsPerSecond := float64(successfulTransactions) / elapsedTime.Seconds()
+
+	// Print results summary
+	fmt.Printf("\n*** Benchmarking Complete ***\n")
+	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
+	fmt.Printf("| Transactions executed | Successful Transactions | Elapsed time   | TPS achieved | Average Latency   |\n")
+	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
+	fmt.Printf("| %-21d | %-23d | %-14s | %-12.2f | %-17s |\n",
+		numAssets, successfulTransactions, elapsedTime.String(), transactionsPerSecond, averageLatency.String())
+	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
+
+	// Include detailed timing breakdown
+	fmt.Printf("\nDetailed Timing Breakdown:\n")
+	fmt.Printf("  Average Endorse Time: %s\n", averageEndorseTime)
+	fmt.Printf("  Average Ordering Time: %s\n", averageOrderingTime)
+	fmt.Printf("  Average Commit Time: %s\n", averageCommitTime)
+	fmt.Printf("  Total Time Per Transaction: %s\n", averageLatency)
+	// Após calcular métricas como totalOrderingTime, totalCommitTime e elapsedTime
+	if successfulTransactions == 0 {
+		fmt.Println("No successful transactions. Cannot calculate metrics.")
+		return
+	}
+
+	// Prever BT e BS usando os tempos acumulados
+	predictedBT, predictedBS := predictBatchParameters(
+		totalOrderingTime,      // Tempo total de ordering
+		totalCommitTime,        // Tempo total de execução
+		successfulTransactions, // Número total de transações bem-sucedidas
+		elapsedTime,            // Tempo total decorrido
+	)
+
+	// Exibir os valores previstos
+	fmt.Printf("Predicted Batch Timeout (BT): %.2f seconds\n", predictedBT)
+	fmt.Printf("Predicted Batch Size (BS): %.2f\n", predictedBS)
+
 }
 
 // Evaluate a transaction by assetID to query ledger state.
