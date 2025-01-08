@@ -32,13 +32,20 @@ import (
 
 const (
 	mspID        = "Org1MSP"
-	cryptoPath   = "../peerOrganizations/org1.example.com"
+	cryptoPath   = `../crypto-config/peerOrganizations/org1.example.com`
 	certPath     = cryptoPath + "/users/User1@org1.example.com/msp/signcerts"
 	keyPath      = cryptoPath + "/users/User1@org1.example.com/msp/keystore"
 	tlsCertPath  = cryptoPath + "/peers/peer0.org1.example.com/tls/ca.crt"
 	peerEndpoint = "dns:///localhost:7051"
 	gatewayPeer  = "peer0.org1.example.com"
+	ordererCA    = "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/tlsca/tlsca.example.com-cert.pem"
 )
+
+// Estrutura para armazenar parâmetros
+type BatchParameters struct {
+	BatchTimeout string
+	BatchSize    int
+}
 
 var now = time.Now()
 
