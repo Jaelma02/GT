@@ -624,28 +624,6 @@ func createAssetBenchDetailed(contract *client.Contract, tps int, numAssets int)
 	close(commitTimeCh)
 }
 
-func predictBatchParameters(orderingTime, executionTime time.Duration, successfulTransactions int, elapsedTime time.Duration) (float64, float64) {
-	if successfulTransactions == 0 {
-		fmt.Println("No successful transactions. Cannot predict Batch Timeout or Batch Size.")
-		return 0.0, 0.0
-	}
-
-	// Mean Time to Ordering (MTO) and Execution (MTE)
-	mto := orderingTime.Seconds() / float64(successfulTransactions)
-	mte := executionTime.Seconds() / float64(successfulTransactions)
-
-	// Predicted Batch Timeout (BT)
-	predictedBT := mto + mte
-
-	// Throughput (TPS)
-	tps := float64(successfulTransactions) / elapsedTime.Seconds()
-
-	// Predicted Batch Size (BS)
-	predictedBS := tps * predictedBT
-
-	return predictedBT, predictedBS
-}
-
 func createAssetBenchEnd(contract *client.Contract, tps int, numAssets int) {
 	if tps <= 0 {
 		fmt.Println("Invalid TPS value. Please provide a positive integer.")
@@ -795,18 +773,6 @@ func createAssetBenchEnd(contract *client.Contract, tps int, numAssets int) {
 		fmt.Println("No successful transactions. Cannot calculate metrics.")
 		return
 	}
-
-	// Prever BT e BS usando os tempos acumulados
-	predictedBT, predictedBS := predictBatchParameters(
-		totalOrderingTime,      // Tempo total de ordering
-		totalCommitTime,        // Tempo total de execução
-		successfulTransactions, // Número total de transações bem-sucedidas
-		elapsedTime,            // Tempo total decorrido
-	)
-
-	// Exibir os valores previstos
-	fmt.Printf("Predicted Batch Timeout (BT): %.2f seconds\n", predictedBT)
-	fmt.Printf("Predicted Batch Size (BS): %.2f\n", predictedBS)
 
 }
 
