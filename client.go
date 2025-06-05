@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path"
 	"strconv"
@@ -366,6 +367,10 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	if numAssets <= 0 {
 		numAssets = 1
 	}
+	if len(methods) < 2 {
+		fmt.Println("methods slice does not contain enough elements.")
+		return
+	}
 
 	fmt.Printf("\n--> Benchmarking CreateAsset at %d TPS\n", tps)
 
@@ -375,23 +380,22 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 	var wg sync.WaitGroup
 	wg.Add(numAssets)
 
-	// Metrics collection
-	var (
-		totalElapsedTime       time.Duration
-		totalTPS               float64
-		totalLatency           time.Duration
-		successfulTransactions int
-	)
+	type txResult struct {
+		Index        int
+		Start        time.Time
+		End          time.Time
+		Latency      time.Duration
+		Success      bool
+		ErrorMessage string
+	}
 
-	// Channel to collect latencies
-	latencyCh := make(chan time.Duration, numAssets)
+	results := make([]txResult, numAssets)
 
 	for i := 0; i < numAssets; i++ {
 		go func(i int) {
 			defer wg.Done()
 
-			time.Sleep(time.Duration(i) * interval) // Distribute transactions over the interval
-
+			time.Sleep(time.Duration(i) * interval)
 			hash := generateRandomHash()
 
 			txStartTime := time.Now()
@@ -399,44 +403,66 @@ func createAssetBench(contract *client.Contract, tps int, numAssets int) {
 			txEndTime := time.Now()
 
 			if err != nil {
-				fmt.Printf("failed to submit transaction: %v\n", err)
+				results[i] = txResult{i, txStartTime, txEndTime, txEndTime.Sub(txStartTime), false, err.Error()}
 				return
 			}
 
-			// Increment successful transactions count
-			successfulTransactions++
-
-			// Calculate latency
-			latency := txEndTime.Sub(txStartTime)
-			latencyCh <- latency
-
-			// Accumulate metrics
-			totalElapsedTime += txEndTime.Sub(txStartTime)
-			totalTPS += 1 / latency.Seconds()
+			results[i] = txResult{i, txStartTime, txEndTime, txEndTime.Sub(txStartTime), true, ""}
 		}(i)
 	}
 
 	wg.Wait()
-	close(latencyCh)
-
 	endTime := time.Now()
 	elapsedTime := endTime.Sub(startTime)
-	transactionsPerSecond := float64(successfulTransactions) / elapsedTime.Seconds()
 
-	// Calculate average latency
-	var totalLatencySeconds float64
-	for latency := range latencyCh {
-		totalLatency += latency
-		totalLatencySeconds += latency.Seconds()
+	// Tabela detalhada
+	fmt.Printf("\n*** Transações Individuais ***\n")
+	fmt.Println("---------------------------------------------------------------------------------------------------------------")
+	fmt.Printf("| %-5s | %-30s | %-30s | %-10s | %-8s |\n", "ID", "Start", "End", "Latency(ms)", "Success")
+	fmt.Println("---------------------------------------------------------------------------------------------------------------")
+
+	var (
+		latenciesMs            []float64
+		successfulTransactions int
+		totalLatency           float64
+	)
+
+	for _, res := range results {
+		latencyMs := float64(res.Latency.Milliseconds())
+		status := "NO"
+		if res.Success {
+			status = "YES"
+			latenciesMs = append(latenciesMs, latencyMs)
+			successfulTransactions++
+			totalLatency += latencyMs
+		}
+		fmt.Printf("| %-5d | %-30s | %-30s | %-10.2f | %-8s |\n",
+			res.Index,
+			res.Start.Format("2006-01-02 15:04:05.000"),
+			res.End.Format("2006-01-02 15:04:05.000"),
+			latencyMs,
+			status)
 	}
-	averageLatency := totalLatency / time.Duration(successfulTransactions)
+	fmt.Println("---------------------------------------------------------------------------------------------------------------")
 
-	fmt.Printf("\n*** Benchmarking Complete ***\n")
-	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
-	fmt.Printf("| Transactions executed | Successful Transactions | Elapsed time   | TPS achieved | Average Latency   |\n")
-	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
-	fmt.Printf("| %-21d | %-23d | %-14s | %-12.2f | %-17s |\n", numAssets, successfulTransactions, elapsedTime.String(), transactionsPerSecond, averageLatency.String())
-	fmt.Printf("-------------------------------------------------------------------------------------------------------\n")
+	// Cálculo de métricas agregadas
+	var stdDev float64
+	meanLatency := totalLatency / float64(successfulTransactions)
+	for _, l := range latenciesMs {
+		stdDev += math.Pow(l-meanLatency, 2)
+	}
+	stdDev = math.Sqrt(stdDev / float64(successfulTransactions))
+
+	tpsAchieved := float64(successfulTransactions) / elapsedTime.Seconds()
+
+	// Tabela resumida
+	fmt.Printf("\n*** Benchmarking Summary ***\n")
+	fmt.Printf("-------------------------------------------------------------------------------------------------------------------\n")
+	fmt.Printf("| TPS Configurado | Transações Enviadas | Sucesso | Tempo Total | TPS Real | Latência Média (ms) | Desvio Padrão (ms) |\n")
+	fmt.Printf("-------------------------------------------------------------------------------------------------------------------\n")
+	fmt.Printf("| %-15d | %-20d | %-7d | %-11s | %-8.2f | %-20.2f | %-20.2f |\n",
+		tps, numAssets, successfulTransactions, elapsedTime.Truncate(time.Millisecond), tpsAchieved, meanLatency, stdDev)
+	fmt.Printf("-------------------------------------------------------------------------------------------------------------------\n")
 }
 
 func createAssetEndorse(contract *client.Contract, n int) {
