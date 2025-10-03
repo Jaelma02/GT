@@ -2,11 +2,14 @@ package main
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/hyperledger/fabric-gateway/pkg/client"
@@ -15,224 +18,242 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+// =============================
+// Configurações do cliente
+// =============================
 const (
 	mspID        = "Org1MSP"
+	cryptoPath   = "/mnt/c/Users/jaelm/Desktop/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com"
+	certPath     = cryptoPath + "/users/User1@org1.example.com/msp/signcerts/User1@org1.example.com-cert.pem"
+	keyPath      = cryptoPath + "/users/User1@org1.example.com/msp/keystore/"
+	tlsCertPath  = cryptoPath + "/peers/peer0.org1.example.com/tls/ca.crt"
 	peerEndpoint = "localhost:7051"
 	gatewayPeer  = "peer0.org1.example.com"
+	channelName  = "mychannel"
+	chaincodeID  = "htlc"
 )
 
-var (
-	mspPath     = "/mnt/c/Users/jaelm/Desktop/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp"
-	certPath    = filepath.Join(mspPath, "signcerts", "User1@org1.example.com-cert.pem")
-	keyPath     = filepath.Join(mspPath, "keystore")
-	tlsCertPath = "/mnt/c/Users/jaelm/Desktop/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
-)
+// =============================
+// Função auxiliar para conectar gRPC
+// =============================
+func newGrpcConnection() (*grpc.ClientConn, error) {
+	certificate, err := loadCertificate(tlsCertPath)
+	if err != nil {
+		return nil, err
+	}
+	cred := credentials.NewClientTLSFromCert(certificate, gatewayPeer)
+	return grpc.Dial(peerEndpoint, grpc.WithTransportCredentials(cred))
+}
 
+func loadCertificate(path string) (*x509.CertPool, error) {
+	certData, err := ioutil.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, err
+	}
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(certData) {
+		return nil, fmt.Errorf("falha ao adicionar certificado TLS")
+	}
+	return certPool, nil
+}
+
+// =============================
+// Cria a identidade X509
+// =============================
+func newIdentity() (*identity.X509Identity, error) {
+	certPEM, err := ioutil.ReadFile(certPath)
+	if err != nil {
+		return nil, err
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, fmt.Errorf("falha ao decodificar certificado PEM")
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := identity.NewX509Identity(mspID, cert)
+	if err != nil {
+		return nil, err
+	}
+	return id, nil
+}
+
+// =============================
+// Cria o signer a partir da chave privada
+// =============================
+func newSign() (identity.Sign, error) {
+	files, err := ioutil.ReadDir(keyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var keyFile string
+	for _, f := range files {
+		if !f.IsDir() && strings.HasSuffix(f.Name(), "_sk") {
+			keyFile = filepath.Join(keyPath, f.Name())
+			break
+		}
+	}
+	if keyFile == "" {
+		return nil, fmt.Errorf("arquivo de chave privada não encontrado")
+	}
+
+	privateKeyPEM, err := ioutil.ReadFile(filepath.Clean(keyFile))
+	if err != nil {
+		return nil, err
+	}
+
+	block, _ := pem.Decode(privateKeyPEM)
+	if block == nil {
+		return nil, fmt.Errorf("falha ao decodificar chave privada PEM")
+	}
+
+	var privateKey interface{}
+	if pk, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		privateKey = pk
+	} else if pk, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+		privateKey = pk
+	} else {
+		return nil, fmt.Errorf("não foi possível parsear private key: %v", err)
+	}
+
+	return identity.NewPrivateKeySign(privateKey)
+}
+
+// =============================
+// Função principal
+// =============================
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Uso: ./fabric-client <operacao> [args...]")
+		fmt.Println("Uso: go run client.go <comando> [args...]")
+		fmt.Println("Comandos disponíveis:")
+		fmt.Println("  mint <tokenId> <owner>")
+		fmt.Println("  createHTLC <htlcId> <owner> <recipient> <secret> <tokenId> <lockTime>")
+		fmt.Println("  fundHTLC <htlcId> <sender>")
+		fmt.Println("  withdrawHTLC <htlcId> <recipient> <secret>")
+		fmt.Println("  refundHTLC <htlcId>")
+		fmt.Println("  getTransfer <transferId>")
 		os.Exit(1)
 	}
-	operacao := os.Args[1]
 
-	clientConnection := newGrpcConnection()
-	defer clientConnection.Close()
+	command := os.Args[1]
 
-	id := newIdentity()
-	sign := newSign()
+	grpcConn, err := newGrpcConnection()
+	if err != nil {
+		log.Fatalf("Erro ao conectar gRPC: %v", err)
+	}
+	defer grpcConn.Close()
+
+	id, err := newIdentity()
+	if err != nil {
+		log.Fatalf("Erro ao criar identidade: %v", err)
+	}
+	sign, err := newSign()
+	if err != nil {
+		log.Fatalf("Erro ao criar signer: %v", err)
+	}
 
 	gw, err := client.Connect(
 		id,
 		client.WithSign(sign),
-		client.WithClientConnection(clientConnection),
+		client.WithClientConnection(grpcConn),
 		client.WithEvaluateTimeout(5*time.Second),
 		client.WithEndorseTimeout(15*time.Second),
-		client.WithSubmitTimeout(5*time.Second),
-		client.WithCommitStatusTimeout(1*time.Minute),
+		client.WithSubmitTimeout(15*time.Second),
+		client.WithCommitStatusTimeout(60*time.Second),
 	)
-	check(err)
+	if err != nil {
+		log.Fatalf("Erro ao conectar gateway: %v", err)
+	}
 	defer gw.Close()
 
-	network := gw.GetNetwork("mychannel")
+	network := gw.GetNetwork(channelName)
+	contract := network.GetContract(chaincodeID)
 
-	htlc := network.GetContract("htlc")
-	notary := network.GetContract("notary")
-
-	switch operacao {
-	// ------------------- HTLC -------------------
-	case "fund":
-		if len(os.Args) < 6 {
-			log.Fatalln("Uso: ./fabric-client fund <from> <to> <tokenId> <secret>")
+	switch command {
+	case "mint":
+		if len(os.Args) != 4 {
+			log.Fatal("Uso: mint <tokenId> <owner>")
 		}
-		result, err := htlc.SubmitTransaction("Fund", os.Args[2], os.Args[3], os.Args[4], os.Args[5])
-		check(err)
-		fmt.Println("Fund:", string(result))
-
-	case "withdraw":
-		if len(os.Args) < 4 {
-			log.Fatalln("Uso: ./fabric-client withdraw <tokenId> <secret>")
+		tokenId := os.Args[2]
+		owner := os.Args[3]
+		_, err := contract.SubmitTransaction("MintToken", tokenId, owner)
+		if err != nil {
+			log.Fatalf("Erro MintToken: %v", err)
 		}
-		result, err := htlc.SubmitTransaction("Withdraw", os.Args[2], os.Args[3])
-		check(err)
-		fmt.Println("Withdraw:", string(result))
+		fmt.Println("Token mintado com sucesso")
 
-	case "refund":
-		if len(os.Args) < 3 {
-			log.Fatalln("Uso: ./fabric-client refund <tokenId>")
+	case "createHTLC":
+		if len(os.Args) != 8 {
+			log.Fatal("Uso: createHTLC <htlcId> <owner> <recipient> <secret> <tokenId> <lockTime>")
 		}
-		result, err := htlc.SubmitTransaction("Refund", os.Args[2])
-		check(err)
-		fmt.Println("Refund:", string(result))
-
-	case "owner":
-		if len(os.Args) < 3 {
-			log.Fatalln("Uso: ./fabric-client owner <tokenId>")
+		htlcId := os.Args[2]
+		owner := os.Args[3]
+		recipient := os.Args[4]
+		secret := os.Args[5]
+		tokenId := os.Args[6]
+		lockTime := os.Args[7]
+		_, err := contract.SubmitTransaction("CreateHTLC", htlcId, owner, recipient, secret, tokenId, lockTime)
+		if err != nil {
+			log.Fatalf("Erro CreateHTLC: %v", err)
 		}
-		result, err := htlc.EvaluateTransaction("Owner", os.Args[2])
-		check(err)
-		fmt.Println("Owner:", string(result))
+		fmt.Println("HTLC criado com sucesso")
 
-	case "recipient":
-		if len(os.Args) < 3 {
-			log.Fatalln("Uso: ./fabric-client recipient <tokenId>")
+	case "fundHTLC":
+		if len(os.Args) != 4 {
+			log.Fatal("Uso: fundHTLC <htlcId> <sender>")
 		}
-		result, err := htlc.EvaluateTransaction("Recipient", os.Args[2])
-		check(err)
-		fmt.Println("Recipient:", string(result))
-
-	// ------------------- NOTARY -------------------
-	case "mintNFT":
-		if len(os.Args) < 4 {
-			log.Fatalln("Uso: ./fabric-client mintNFT <to> <senderInterChain>")
+		htlcId := os.Args[2]
+		sender := os.Args[3]
+		_, err := contract.SubmitTransaction("FundHTLC", htlcId, sender)
+		if err != nil {
+			log.Fatalf("Erro FundHTLC: %v", err)
 		}
-		result, err := notary.SubmitTransaction("MintNFT", os.Args[2], os.Args[3])
-		check(err)
-		fmt.Println("MintNFT:", string(result))
+		fmt.Println("HTLC financiado")
 
-	case "transferNFTInterChain":
-		if len(os.Args) < 5 {
-			log.Fatalln("Uso: ./fabric-client transferNFTInterChain <nftContract> <tokenId> <receiver>")
+	case "withdrawHTLC":
+		if len(os.Args) != 5 {
+			log.Fatal("Uso: withdrawHTLC <htlcId> <recipient> <secret>")
 		}
-		result, err := notary.SubmitTransaction("TransferNFTInterChain", os.Args[2], os.Args[3], os.Args[4])
-		check(err)
-		fmt.Println("TransferNFTInterChain:", string(result))
-
-	case "transferFrom":
-		if len(os.Args) < 5 {
-			log.Fatalln("Uso: ./fabric-client transferFrom <from> <to> <tokenId>")
+		htlcId := os.Args[2]
+		recipient := os.Args[3]
+		secret := os.Args[4]
+		_, err := contract.SubmitTransaction("WithdrawHTLC", htlcId, recipient, secret)
+		if err != nil {
+			log.Fatalf("Erro WithdrawHTLC: %v", err)
 		}
-		result, err := notary.SubmitTransaction("TransferFrom", os.Args[2], os.Args[3], os.Args[4])
-		check(err)
-		fmt.Println("TransferFrom:", string(result))
+		fmt.Println("HTLC sacado")
 
-	case "safeTransferFrom":
-		if len(os.Args) < 5 {
-			log.Fatalln("Uso: ./fabric-client safeTransferFrom <from> <to> <tokenId>")
+	case "refundHTLC":
+		if len(os.Args) != 3 {
+			log.Fatal("Uso: refundHTLC <htlcId>")
 		}
-		result, err := notary.SubmitTransaction("SafeTransferFrom", os.Args[2], os.Args[3], os.Args[4])
-		check(err)
-		fmt.Println("SafeTransferFrom:", string(result))
-
-	case "approve":
-		if len(os.Args) < 4 {
-			log.Fatalln("Uso: ./fabric-client approve <to> <tokenId>")
+		htlcId := os.Args[2]
+		_, err := contract.SubmitTransaction("RefundHTLC", htlcId)
+		if err != nil {
+			log.Fatalf("Erro RefundHTLC: %v", err)
 		}
-		result, err := notary.SubmitTransaction("Approve", os.Args[2], os.Args[3])
-		check(err)
-		fmt.Println("Approve:", string(result))
+		fmt.Println("HTLC reembolsado")
 
-	case "setApprovalForAll":
-		if len(os.Args) < 4 {
-			log.Fatalln("Uso: ./fabric-client setApprovalForAll <operator> <true|false>")
+	case "getTransfer":
+		if len(os.Args) != 3 {
+			log.Fatal("Uso: getTransfer <transferId>")
 		}
-		result, err := notary.SubmitTransaction("SetApprovalForAll", os.Args[2], os.Args[3])
-		check(err)
-		fmt.Println("SetApprovalForAll:", string(result))
-
-	case "getNftTransfers":
-		result, err := notary.EvaluateTransaction("GetNftTransfers")
-		check(err)
-		fmt.Println("NFT Transfers:", string(result))
-
-	case "getTransferById":
-		if len(os.Args) < 3 {
-			log.Fatalln("Uso: ./fabric-client getTransferById <transferId>")
+		transferId := os.Args[2]
+		result, err := contract.EvaluateTransaction("GetTransferById", transferId)
+		if err != nil {
+			log.Fatalf("Erro GetTransferById: %v", err)
 		}
-		result, err := notary.EvaluateTransaction("GetTransferById", os.Args[2])
-		check(err)
-		fmt.Println("TransferById:", string(result))
+		var transfer map[string]interface{}
+		json.Unmarshal(result, &transfer)
+		fmt.Printf("Transfer: %+v\n", transfer)
 
-	case "getNotaryOwner":
-		result, err := notary.EvaluateTransaction("GetNotaryOwner")
-		check(err)
-		fmt.Println("Notary Owner:", string(result))
-
-	case "transferOwnership":
-		if len(os.Args) < 3 {
-			log.Fatalln("Uso: ./fabric-client transferOwnership <newOwner>")
-		}
-		result, err := notary.SubmitTransaction("TransferOwnership", os.Args[2])
-		check(err)
-		fmt.Println("Ownership transferred:", string(result))
-
-	/*
-		case "renounceOwnership":
-			// TODO: implementar corretamente
-	*/
 	default:
-		fmt.Println("Operação não reconhecida:", operacao)
+		fmt.Println("Comando inválido")
 	}
-}
-
-// ---------------- AUX -------------------
-
-func check(err error) {
-	if err != nil {
-		log.Fatalf("Erro: %v", err)
-	}
-}
-
-func newGrpcConnection() *grpc.ClientConn {
-	certificate, err := os.ReadFile(tlsCertPath)
-	check(err)
-	certPool := x509.NewCertPool()
-	certPool.AppendCertsFromPEM(certificate)
-	transportCredentials := credentials.NewClientTLSFromCert(certPool, gatewayPeer)
-
-	connection, err := grpc.Dial(peerEndpoint, grpc.WithTransportCredentials(transportCredentials))
-	check(err)
-	return connection
-}
-
-func newIdentity() *identity.X509Identity {
-	certPEM, err := os.ReadFile(certPath)
-	check(err)
-
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
-		log.Fatalf("failed to decode PEM certificate from %s", certPath)
-	}
-
-	cert, err := x509.ParseCertificate(block.Bytes)
-	check(err)
-
-	id, err := identity.NewX509Identity(mspID, cert)
-	check(err)
-
-	return id
-}
-
-func newSign() identity.Sign {
-	files, err := os.ReadDir(keyPath)
-	check(err)
-	if len(files) == 0 {
-		log.Fatalf("Nenhuma chave encontrada em %s", keyPath)
-	}
-	keyPEM, err := os.ReadFile(filepath.Join(keyPath, files[0].Name()))
-	check(err)
-	privateKey, err := identity.PrivateKeyFromPEM(keyPEM)
-	check(err)
-	sign, err := identity.NewPrivateKeySign(privateKey)
-	check(err)
-	return sign
 }
